@@ -1,5 +1,5 @@
 (**
- * A simple and efficient implementation of push style event combinator.
+ * A simple implementation of Push style Event Combinator.
  *)
 
 (*   
@@ -108,7 +108,8 @@ let make () =
         let time = get_time () in
         cell.data <- Some x;
         let ns = cell.notify in
-        cell.notify <- [];
+        cell.notify <- []; (* notify関数が再度cell.notifyをセットするはず。
+                              これによりnotify関数を削除する手間を省く。*)
         List.iter (fun (_, notify) -> notify cell.id time) ns) event_queue)
 
 let map f e = Wrap {
@@ -204,27 +205,6 @@ let with_latest latest setter time reader set_notify =
   | v -> 
       set_notify ();
       v
-
-let rec pull : 'a. id -> 'a event -> 'a option  = 
-  fun id -> function
-    | Wrap w -> may_map (lazy None) (fun v -> Some (w.wrap v)) (pull id w.event)
-    | Choose c ->
-        let rec find_value = function
-            [] -> None
-          | hd :: tl ->
-              pull id hd
-                +> may_map (lazy (find_value tl)) (fun v -> Some v)
-        in
-        find_value (scramble c.choose)
-    | Join j ->
-        may_map (lazy None) (pull id) (pull id j.outer)
-    | Cell cell ->
-        if cell.id = id then 
-          cell.data 
-        else 
-          None
-    | _ -> 
-        None
 
 let set_notify_only id notify e =
   fun () -> ignore (set_notify_with_id id notify e)
