@@ -271,7 +271,11 @@ let subscribe f e =
 let bind e f =
   join (map f e)
 
-let (>>=) = bind
+module OP = struct
+  let (>>=) = bind
+end
+
+open OP
 
 let scan f i e =
   let s = ref i in
@@ -313,6 +317,15 @@ let take_while cond e =
       else
         never
     else
+      never)
+
+let take_while_in cond e =
+  let flag = ref true in
+  e >>= (fun v -> 
+    if !flag then begin
+      flag := (cond v);
+      e
+    end else
       never)
   
 let take_n n e =

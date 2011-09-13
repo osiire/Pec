@@ -18,6 +18,7 @@ val filter : ('a -> bool) -> 'a event -> 'a event
 val filter_map : ('a -> 'b option) -> 'a event -> 'b event
 val zip : 'a event -> 'b event -> ('a * 'b) event
 val take_while : ('a -> bool) -> 'a event -> 'a event
+val take_while_in : ('a -> bool) -> 'a event -> 'a event
 val take_n : int -> 'a event -> 'a event
 val once : 'a event -> 'a event
 
@@ -27,3 +28,7 @@ val subscribe : ('a -> unit) -> 'a event -> unit
 
 (** [run ()] runs PEC event system and returns a number of queuing size of sended data. *)
 val run : unit -> int
+
+module OP : sig
+  val (>>=) : 'a event -> ('a -> 'b event) -> 'b event
+end
