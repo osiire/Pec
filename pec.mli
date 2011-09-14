@@ -21,10 +21,16 @@ val take_while : ('a -> bool) -> 'a event -> 'a event
 val take_while_in : ('a -> bool) -> 'a event -> 'a event
 val take_n : int -> 'a event -> 'a event
 val once : 'a event -> 'a event
+val drop_while : ('a -> bool) -> 'a event -> 'a event
+val drop_n : int -> 'a event -> 'a event
+val delay : int -> 'a event -> 'a event
+val pairwise : 'a event -> ('a * 'a) event
 
 (** [subscribe f e] attaches the [f] to the specified event. 
     The [f] will be called when the [e] will occurred. *)
 val subscribe : ('a -> unit) -> 'a event -> unit
+
+val value : 'a -> 'a event -> 'a ref
 
 (** [run ()] runs PEC event system and returns a number of queuing size of sended data. *)
 val run : unit -> int

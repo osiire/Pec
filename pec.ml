@@ -271,6 +271,10 @@ let subscribe f e =
 let bind e f =
   join (map f e)
 
+let value init e =
+  let v = ref init in
+  tee (fun _ -> subscribe (fun v' -> v := v') e) v
+
 module OP = struct
   let (>>=) = bind
 end
@@ -334,3 +338,30 @@ let take_n n e =
 
 let once e =
   take_n 1 e
+
+let drop_while cond e =
+  let flag = ref true in
+  e >>= (fun v -> 
+    if !flag then 
+      if tee (fun b -> flag := b) (cond v) then
+        never
+      else
+        e
+    else
+      e)
+
+let drop_n n e =
+  let cnt = ref 0 in
+  drop_while (fun _ -> tee (fun _ -> incr cnt) (!cnt < n)) e
+
+let delay n e =
+  let q = Queue.create () in
+  e >>= (fun v -> 
+    Queue.push v q;
+    if Queue.length q < n then
+      never
+    else
+      return (Queue.pop q) e)
+
+let pairwise e =
+  zip e (delay 1 e)
