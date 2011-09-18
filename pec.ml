@@ -132,7 +132,8 @@ let scramble l =
   end
     
 let choose es = Choose {
-  choose = scramble es;
+  (*choose = scramble es;*)
+  choose = es;
   c_latest = None;
 }
 
@@ -213,12 +214,16 @@ let rec read : 'a. id -> (id * (id -> time -> unit)) -> time -> 'a event -> 'a o
   fun id notify time -> function
     | Cell cell ->
         if cell.id = id then begin
+          debug (!%"find id=%d\n" id);
           (* 次回も呼び出してもらえるようにnotifyを代入しておく *)
           set_notify_to_cell cell notify;
           cell.data
-        end else
+        end else begin
+          debug (!%"id is deiff cell.id %d <> %d\n" cell.id id);
           None
+        end
     | Wrap w ->
+        debug "map\n";
         let wrap_read () =
           read id notify time w.event
           +> may_map (lazy None) (fun v -> Some (w.wrap v))
@@ -231,6 +236,7 @@ let rec read : 'a. id -> (id * (id -> time -> unit)) -> time -> 'a event -> 'a o
           let rec find_value = function
               [] -> None
             | hd :: tl ->
+                debug (!%"choose %d\n" id);
                 read id notify time hd
                 +> may_map (lazy (find_value tl)) (fun v -> Some v)
           in
@@ -241,13 +247,16 @@ let rec read : 'a. id -> (id * (id -> time -> unit)) -> time -> 'a event -> 'a o
           choose_read 
           (set_notify_only id notify e)
     | Join j as e ->
+        debug "join";
         let join_read () =
           read id notify time j.outer
-          +> may_map (lazy (may_map (lazy None) (read id notify time) j.inner)) (fun inner ->
+          +> may_map (lazy (debug "try to find inner\n";may_map (lazy (debug "join inner is none\n";None)) (read id notify time) j.inner)) (fun inner ->
             debug "inner\n";
             j.inner <- Some inner;
             ignore (set_notify notify inner);
-            read id notify time inner)
+            tee (function 
+              | None -> debug "read join inner returns none\n"
+              | Some _ ->  debug "join same time inner is Some\n") (read id notify time inner))
         in
         with_latest j.j_latest (fun l -> j.j_latest <- l) time 
           join_read 
@@ -307,10 +316,18 @@ let sequence ms =
   List.fold_left mcons (map (fun x -> [x]) (List.hd r)) (List.tl r)
 
 let zip e1 e2 =
-  choose [
-    e1 >>= (fun x1 -> e2 >>= (fun x2 -> return (x1, x2) e2));
-    e2 >>= (fun x2 -> e1 >>= (fun x1 -> return (x1, x2) e1));
-  ]
+  choose [ map (fun v -> `C1 v) e1; map (fun v -> `C2 v) e2 ]
+  +> scan (fun (v1, v2) v ->
+    match v1, v2, v with
+    | Some v1, Some v2, `C1 v -> Some v, Some v2
+    | Some v1, Some v2, `C2 v -> Some v1, Some v
+    | None, Some v2, `C1 v -> Some v, Some v2
+    | None, Some v2, `C2 v -> Some v, Some v
+    | Some v1, None, `C1 v -> Some v, None
+    | Some v1, None, `C2 v -> Some v1, Some v
+    | None, None, `C1 v -> Some v, None
+    | None, None, `C2 v -> None, Some v) (None, None)
+  +> filter_map (function Some v1, Some v2 -> Some (v1, v2) | _ -> None)
 
 let take_while cond e =
   let flag = ref true in

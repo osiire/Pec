@@ -1,5 +1,5 @@
 
-module E = WEvent
+module E = Pec
 
 let run_all () =
   while E.run () > 0 do () done
@@ -171,7 +171,7 @@ let zip_test () =
   sender2 3;
   sender1 4;
   run_all ();
-  assert ( !seq = [1,2; 4,3] )
+  assert ( List.rev !seq = [1,2; 1,3; 4,3] )
 
 let once_test () =
   let seq = ref [] in
