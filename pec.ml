@@ -322,7 +322,7 @@ let zip e1 e2 =
     | Some v1, Some v2, `C1 v -> Some v, Some v2
     | Some v1, Some v2, `C2 v -> Some v1, Some v
     | None, Some v2, `C1 v -> Some v, Some v2
-    | None, Some v2, `C2 v -> Some v, Some v
+    | None, Some v2, `C2 v -> None, Some v
     | Some v1, None, `C1 v -> Some v, None
     | Some v1, None, `C2 v -> Some v1, Some v
     | None, None, `C1 v -> Some v, None
