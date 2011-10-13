@@ -315,18 +315,27 @@ let sequence ms =
   let r = List.rev ms in
   List.fold_left mcons (map (fun x -> [x]) (List.hd r)) (List.tl r)
 
+type ('a, 'b) choise2 = 
+    [`T1 of 'a | `T2 of 'b]
+type ('a, 'b, 'c) choise3 =  
+    [ ('a,'b) choise2 | `T3 of 'c ]
+type ('a, 'b, 'c, 'd) choise4 =  
+    [ ('a,'b, 'c) choise3 | `T4 of 'd ]
+type ('a, 'b, 'c, 'd, 'e) choise5 =  
+    [ ('a,'b, 'c, 'd) choise4 | `T5 of 'e ]
+
 let zip e1 e2 =
-  choose [ map (fun v -> `C1 v) e1; map (fun v -> `C2 v) e2 ]
+  choose [ map (fun v -> `T1 v) e1; map (fun v -> `T2 v) e2 ]
   +> scan (fun (v1, v2) v ->
     match v1, v2, v with
-    | Some v1, Some v2, `C1 v -> Some v, Some v2
-    | Some v1, Some v2, `C2 v -> Some v1, Some v
-    | None, Some v2, `C1 v -> Some v, Some v2
-    | None, Some v2, `C2 v -> None, Some v
-    | Some v1, None, `C1 v -> Some v, None
-    | Some v1, None, `C2 v -> Some v1, Some v
-    | None, None, `C1 v -> Some v, None
-    | None, None, `C2 v -> None, Some v) (None, None)
+    | Some v1, Some v2, `T1 v -> Some v, Some v2
+    | Some v1, Some v2, `T2 v -> Some v1, Some v
+    | None, Some v2, `T1 v -> Some v, Some v2
+    | None, Some v2, `T2 v -> None, Some v
+    | Some v1, None, `T1 v -> Some v, None
+    | Some v1, None, `T2 v -> Some v1, Some v
+    | None, None, `T1 v -> Some v, None
+    | None, None, `T2 v -> None, Some v) (None, None)
   +> filter_map (function Some v1, Some v2 -> Some (v1, v2) | _ -> None)
 
 let take_while cond e =

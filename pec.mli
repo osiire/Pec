@@ -1,6 +1,15 @@
 
 type 'a event
 
+type ('a, 'b) choise2 = 
+    [`T1 of 'a | `T2 of 'b]
+type ('a, 'b, 'c) choise3 =  
+    [ ('a,'b) choise2 | `T3 of 'c ]
+type ('a, 'b, 'c, 'd) choise4 =  
+    [ ('a,'b, 'c) choise3 | `T4 of 'd ]
+type ('a, 'b, 'c, 'd, 'e) choise5 =  
+    [ ('a,'b, 'c, 'd) choise4 | `T5 of 'e ]
+
 (** [make ()] makes a new event and sender function.*)
 val make : unit -> 'a event * ('a -> unit)
 val map : ('a -> 'b) -> 'a event -> 'b event
