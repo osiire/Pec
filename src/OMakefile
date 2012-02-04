@@ -1,0 +1,26 @@
+########################################################################
+# make pec
+
+include ../OCamlUtil.om 
+
+.PHONY: clean
+clean:
+  rm $(filter-proper-targets $(ls R, .))
+
+FILES[] =
+  pec
+  signal
+
+NATIVE_ENABLED = true
+BYTE_ENABLED = true
+
+LIB = pec
+PACKNAME = Pec
+OCAMLPPFLAGS = 
+OCAMLFLAGS += -thread -w -13 -for-pack $(capitalize $(LIB))
+OCAMLCFLAGS += -dtypes 
+OCAMLDEPFLAGS += $(OCAMLPPFLAGS)
+OCAML_LINK_FLAGS += 
+OCAML_NATIVE_LINK_FLAGS += 
+
+.DEFAULT: $(OCamlLibrary $(LIB), $(FILES))

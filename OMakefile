@@ -1,0 +1,11 @@
+
+INSTALL_DIR = /opt/ocaml/lib/ocaml/pec
+export INSTALL_DIR
+
+OCAMLFLAGS += -thread
+
+.SUBDIRS: src
+
+.PHONY: clean
+clean:
+        rm $(filter-proper-targets $(ls R, .))

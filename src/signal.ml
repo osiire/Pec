@@ -24,10 +24,13 @@ type 'a signal = ('a, s) t
 type 'a event = ('a, e) t
 type 'a ievent = 'a E.event
 
+let ievent t =
+  t.event
+
 let switch t (e : 'a ievent) =
   t.switcher e
 
-let listen t f =
+let listen f t =
   E.subscribe f t.event
 
 let read (t : 'a signal) =
@@ -64,7 +67,7 @@ let return queue x =
 let run queue = 
   E.run queue
 
-module Op = struct
+module OP = struct
   let (!!) t = read t
   let (<<=) t e = switch t e
   let (<==) queue t x = put queue t x

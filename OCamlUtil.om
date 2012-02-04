@@ -1,0 +1,25 @@
+
+public.OCamlLibrary(name, files) =
+   # XXX: JYH: these variables should be marked private in 0.9.9
+   protected.name = $(file $(name))
+
+   protected.OFILES   = $(addsuffix $(EXT_OBJ), $(files))
+   protected.CMOFILES = $(addsuffix .cmo, $(files))
+   protected.CMXFILES = $(addsuffix .cmx, $(files))
+
+   protected.CLIB      = $(file $(name)$(EXT_LIB))
+   protected.BYTELIB   = $(file $(name).cma)
+   protected.NATIVELIB = $(file $(name).cmxa)
+
+   #
+   # Link commands
+   #
+   $(BYTELIB): $(CMOFILES) $(OFILES)
+        $(OCAMLFIND) $(OCAMLLINK) $(LAZY_OCAMLFINDFLAGS) $(PREFIXED_OCAMLPACKS) $(OCAMLFLAGS) $(OCAMLCFLAGS) \
+                $(OCAML_LIB_FLAGS) $(OCAML_LINK_FLAGS) -a -o $@ $(OCamlLinkSort $(CMOFILES)) 
+
+   $(NATIVELIB) $(CLIB): $(CMXFILES) $(OFILES)
+        $(OCAMLFIND) $(OCAMLOPTLINK) $(LAZY_OCAMLFINDFLAGS) $(PREFIXED_OCAMLPACKS) $(OCAMLFLAGS) $(OCAMLOPTFLAGS) \
+                $(OCAML_LIB_FLAGS) $(OCAML_NATIVE_LINK_FLAGS) -a -o $(NATIVELIB) $(OCamlLinkSort $(CMXFILES))
+
+   return $(array $(if $(NATIVE_ENABLED), $(NATIVELIB)), $(if $(NATIVE_ENABLED), $(CLIB)), $(if $(BYTE_ENABLED), $(BYTELIB)))

@@ -1,5 +1,10 @@
 
-module E = Pec
+module E = struct
+  include Pec
+  let queue = Queue.create ()
+  let make () = make queue
+  let run () = run queue
+end
 
 let run_all () =
   while E.run () > 0 do () done

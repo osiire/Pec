@@ -8,13 +8,14 @@ type 'a ievent
 
 val make : (unit -> unit) Queue.t -> 'a event
 val return : (unit -> unit) Queue.t -> 'a -> 'a signal
+val ievent : ('a, 'b) t -> 'a ievent
 val switch : ('a, 'b) t -> 'a ievent -> unit
-val listen : ('a, 'b) t -> ('a -> unit) -> unit
+val listen : ('a -> unit) -> ('a, 'b) t -> unit
 val read : 'a signal ->  'a
 val put : (unit -> unit) Queue.t -> ('a, 'b) t -> 'a -> unit
 val run : (unit -> unit) Queue.t -> int
 
-module Op : sig
+module OP : sig
   val (!!) : 'a signal -> 'a
   val (<<=) : ('a, 'b) t -> 'a ievent -> unit
   val (<==) : (unit -> unit) Queue.t -> ('a, 'b) t -> 'a -> unit
