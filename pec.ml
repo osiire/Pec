@@ -83,17 +83,15 @@ let get_time =
   let counter = ref 0 in
   fun () -> tee (fun _ -> incr counter) !counter
 
-let event_queue = Queue.create ()
-
-let run () =
+let run queue =
   let _ =
-    match maybe Queue.take event_queue with
+    match maybe Queue.take queue with
       `Val e -> e ()
     | _ -> ()
   in
-  Queue.length event_queue
+  Queue.length queue
 
-let make () =
+let make queue =
   let cell = {
     id = get_id ();
     data = None;
@@ -110,7 +108,7 @@ let make () =
         let ns = cell.notify in
         cell.notify <- []; (* notify関数が再度cell.notifyをセットするはず。
                               これによりnotify関数を削除する手間を省く。*)
-        List.iter (fun (_, notify) -> notify cell.id time) ns) event_queue)
+        List.iter (fun (_, notify) -> notify cell.id time) ns) queue)
 
 let map f e = Wrap {
   event = e;

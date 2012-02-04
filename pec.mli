@@ -11,7 +11,7 @@ type ('a, 'b, 'c, 'd, 'e) choise5 =
     [ ('a,'b, 'c, 'd) choise4 | `T5 of 'e ]
 
 (** [make ()] makes a new event and sender function.*)
-val make : unit -> 'a event * ('a -> unit)
+val make : (unit -> unit) Queue.t -> 'a event * ('a -> unit)
 val map : ('a -> 'b) -> 'a event -> 'b event
 
 (** [choose l] is a event which will be raised when one of specified events occurred. *)
@@ -42,7 +42,7 @@ val subscribe : ('a -> unit) -> 'a event -> unit
 val value : 'a -> 'a event -> 'a ref
 
 (** [run ()] runs PEC event system and returns a number of queuing size of sended data. *)
-val run : unit -> int
+val run : (unit -> unit) Queue.t -> int
 
 module OP : sig
   val (>>=) : 'a event -> ('a -> 'b event) -> 'b event
