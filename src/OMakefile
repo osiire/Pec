@@ -8,7 +8,7 @@ clean:
   rm $(filter-proper-targets $(ls R, .))
 
 FILES[] =
-  pec
+  event
   signal
 
 NATIVE_ENABLED = true

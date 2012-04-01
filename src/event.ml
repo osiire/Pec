@@ -75,6 +75,9 @@ and 'a event =
   | Never : 'a event
   | Join : 'a mjoin -> 'a event
 
+type 'a t = 'a event
+type queue = (unit -> unit) Queue.t
+
 let get_id =
   let counter = ref 0 in
   fun () -> tee (fun _ -> incr counter) !counter
@@ -266,21 +269,17 @@ let subscribe f e =
     get_id () 
   in
   let rec notify id time =
-    debug (!%"raise %d\n" id);
+    (*debug (!%"raise %d\n" id);*)
     (match read id (subscribe_id, notify) time e with
       None -> ()
     | Some v -> f v);
-    debug "one notify end\n";
+    (*debug "one notify end\n";*)
   in
-  ignore (set_notify (subscribe_id, notify) e);
-  debug "subscribe end\n"
+  ignore (set_notify (subscribe_id, notify) e)
+  (*debug "subscribe end\n"*)
 
 let bind e f =
   join (map f e)
-
-let value init e =
-  let v = ref init in
-  tee (fun _ -> subscribe (fun v' -> v := v') e) v
 
 module OP = struct
   let (>>=) = bind
