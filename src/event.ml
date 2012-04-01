@@ -78,6 +78,8 @@ and 'a event =
 type 'a t = 'a event
 type queue = (unit -> unit) Queue.t
 
+let make_queue () = Queue.create ()
+
 let get_id =
   let counter = ref 0 in
   fun () -> tee (fun _ -> incr counter) !counter

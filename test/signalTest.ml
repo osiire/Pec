@@ -1,36 +1,30 @@
 
-module E = struct
-  let queue = Queue.create ()
-
-  (* module OP = struct *)
-  (*   include Signal.OP *)
-  (*   let (<==) t x = Signal.put queue t x *)
-  (* end *)
-
-  (* include (Signal : (module type of Signal with module OP := OP)) *)
-  include Signal
-
-  let make () = make queue
-  let return x = return queue x
+module E = Pec.Event
+module S = struct
+  include Pec.Signal
+  let queue = E.make_queue ()
+  let make = make queue
   let put t x = put queue t x
-  let run () = run queue
+  let run () = E.run queue
 end
 
 let run_all () =
-  while E.run () > 0 do () done
+  while S.run () > 0 do () done
 
 let put_test () =
-  let seq = ref [] in
-  let cell = E.make () in
-  let _ = E.listen (fun v -> seq := v :: !seq) cell in
-  E.put cell 1;
-  E.put cell 2;
-  E.put cell 3;
-  E.put cell 4;
-  E.put cell 5;
+  let s = S.make 1 in
+  assert( S.read s = 1 );
+  S.put s 2;
   run_all ();
-  assert ( List.rev !seq = [1;2;3;4;5])
+  assert( S.read s = 2 );
+  S.put s 3;
+  run_all ();
+  assert( S.read s = 3 );
+  S.put s 4;
+  run_all ();
+  assert( S.read s = 4 )
 
+(*
 let map_test () =
   let seq = ref [] in
   let cell = E.make () in
@@ -53,6 +47,7 @@ let choose_test () =
   E.put cell2 4;
   run_all ();
   assert ( List.rev !seq = [3;4])
+*)
 
 (* let never_test () = *)
 (*   E.subscribe (fun x -> assert false) E.never; *)
@@ -204,8 +199,8 @@ let choose_test () =
 let tests =
   [
     "put test", put_test;
-    "map test", map_test;
-    "choose test", choose_test;
+    (* "map test", map_test; *)
+    (* "choose test", choose_test; *)
     (* "never test", never_test; *)
     (* "join test", join_test; *)
     (* "scan test", scan_test; *)

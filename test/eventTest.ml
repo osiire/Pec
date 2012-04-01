@@ -1,7 +1,7 @@
 
 module E = struct
-  include Pec
-  let queue = Queue.create ()
+  include Pec.Event
+  let queue = Pec.Event.make_queue ()
   let make () = make queue
   let run () = run queue
 end

@@ -23,4 +23,4 @@ OCAMLDEPFLAGS += $(OCAMLPPFLAGS)
 OCAML_LINK_FLAGS += 
 OCAML_NATIVE_LINK_FLAGS += 
 
-.DEFAULT: $(OCamlLibrary $(LIB), $(FILES))
+.DEFAULT: $(OCamlPacklessGenerate $(LIB), $(FILES)) $(OCamlLibrary $(LIB), pec)

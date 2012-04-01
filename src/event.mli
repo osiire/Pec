@@ -12,6 +12,7 @@ type ('a, 'b, 'c, 'd, 'e) choise5 =
     [ ('a,'b, 'c, 'd) choise4 | `T5 of 'e ]
 
 (** [make ()] makes a new event and sender function.*)
+val make_queue : unit -> queue
 val make : queue -> 'a t * ('a -> unit)
 val map : ('a -> 'b) -> 'a t -> 'b t
 
