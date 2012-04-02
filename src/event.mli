@@ -15,7 +15,7 @@ type ('a, 'b, 'c, 'd, 'e) choise5 =
 val make_queue : unit -> queue
 val make : queue -> 'a t * ('a -> unit)
 val map : ('a -> 'b) -> 'a t -> 'b t
-
+val return : queue -> 'a -> 'a t
 (** [choose l] is a event which will be raised when one of specified events occurred. *)
 val choose : 'a t list -> 'a t
 val never : 'a t

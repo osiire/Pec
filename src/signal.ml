@@ -29,14 +29,11 @@
 
 module E = Event
 
-type ('a, 'b) signal = {
+type 'a t = {
     mutable value : 'a;
     mutable event : 'a E.t;
     switcher : ('a E.t -> unit);
-  } constraint 'b = [<`MUTABLE|`IMMUTABLE]
-
-type 'a msignal = ('a, [`MUTABLE]) signal
-type 'a isignal = ('a, [`IMMUTABLE]) signal
+  }
 
 let event t =
   t.event
@@ -69,6 +66,11 @@ let make queue x =
   } in
   E.subscribe (fun x -> t.value <- x) e;
   t
+
+let map queue f t =
+  let t' = make queue (f t.value) in
+  switch t' (E.map f t.event);
+  t'
 
 let run queue = 
   E.run queue

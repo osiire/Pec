@@ -115,6 +115,11 @@ let make queue =
                               これによりnotify関数を削除する手間を省く。*)
         List.iter (fun (_, notify) -> notify cell.id time) ns) queue)
 
+let return queue x =
+  let e, sender = make queue in
+  sender x;
+  e
+
 let map f e = Wrap {
   event = e;
   wrap = f;
@@ -293,23 +298,23 @@ let scan f i e =
   let s = ref i in
   map (fun x -> tee (fun n -> s := n) (f !s x)) e
 
-let return x e =
+let _return x e =
   map (fun _ -> x) e
 
 let filter cond e =
   e >>= (fun x -> if cond x then e else never)
 
 let filter_map f e =
-  e >>= (fun x -> match f x with Some v -> return v e | None -> never)
+  e >>= (fun x -> match f x with Some v -> _return v e | None -> never)
 
 let map2 f e1 e2 =
   choose
-    [e1 >>= (fun x -> e2 >>= (fun y -> return (f x y) e2));
-     e2 >>= (fun y -> e1 >>= (fun x -> return (f x y) e1))]
+    [e1 >>= (fun x -> e2 >>= (fun y -> _return (f x y) e2));
+     e2 >>= (fun y -> e1 >>= (fun x -> _return (f x y) e1))]
 
 let sequence ms =
   let mcons ms m =
-    m >>= (fun x -> ms >>= (fun y -> return (x :: y) ms))
+    m >>= (fun x -> ms >>= (fun y -> _return (x :: y) ms))
   in
   let r = List.rev ms in
   List.fold_left mcons (map (fun x -> [x]) (List.hd r)) (List.tl r)
@@ -386,7 +391,7 @@ let delay n e =
     if Queue.length q < n then
       never
     else
-      return (Queue.pop q) e)
+      _return (Queue.pop q) e)
 
 let pairwise e =
   zip e (delay 1 e)

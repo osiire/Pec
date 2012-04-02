@@ -3,6 +3,7 @@ module E = struct
   include Pec.Event
   let queue = Pec.Event.make_queue ()
   let make () = make queue
+  let return x = return queue x
   let run () = run queue
 end
 
@@ -189,6 +190,13 @@ let once_test () =
   run_all ();
   assert ( !seq = [1] )
 
+let return_test () =
+  let seq = ref [] in
+  let e = E.return 2 in
+  E.subscribe (fun v -> seq := v :: !seq) e;
+  run_all ();
+  assert ( !seq = [2] )
+
 let tests =
   [ 
     "direct test", direct_test;
@@ -204,6 +212,7 @@ let tests =
     "diamond test", diamond_test;
     "zip test", zip_test;
     "once test", once_test;
+    "return test", return_test;
   ]
 
 let (!%) = Printf.sprintf

@@ -1,18 +1,16 @@
 
-type ('a, 'b) signal constraint 'b = [<`MUTABLE|`IMMUTABLE]
-type 'a msignal = ('a, [`MUTABLE]) signal
-type 'a isignal = ('a, [`IMMUTABLE]) signal
+type 'a t
 
-val make : Event.queue -> 'a -> 'a msignal
-val return : 'a -> 'a isignal
-val event : ('a, 'b) signal -> 'a Event.t
-val read : ('a, 'b) signal ->  'a
-val switch : ('a, 'b) signal -> 'a Event.t -> unit
-val put : Event.queue -> 'a msignal -> 'a -> unit
+val make : Event.queue -> 'a -> 'a t
+val return : 'a -> 'a t
+val event : 'a t -> 'a Event.t
+val read : 'a t ->  'a
+val switch : 'a t -> 'a Event.t -> unit
+val put : Event.queue -> 'a t -> 'a -> unit
 
 module OP : sig
-  val (!!) : ('a, 'b) signal -> 'a
-  val (<<=) : ('a, 'b) signal -> 'a Event.t -> unit
-  val (<==) : Event.queue -> 'a msignal -> 'a -> unit
+  val (!!) : 'a t -> 'a
+  val (<<=) : 'a t -> 'a Event.t -> unit
+  val (<==) : Event.queue -> 'a t -> 'a -> unit
 end
 
