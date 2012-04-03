@@ -1,16 +1,19 @@
 
-type 'a t
+module Make : functor (E : EventSig.S) -> sig
 
-val make : Event.queue -> 'a -> 'a t
-val return : 'a -> 'a t
-val event : 'a t -> 'a Event.t
-val read : 'a t ->  'a
-val switch : 'a t -> 'a Event.t -> unit
-val put : Event.queue -> 'a t -> 'a -> unit
+  type 'a t
 
-module OP : sig
-  val (!!) : 'a t -> 'a
-  val (<<=) : 'a t -> 'a Event.t -> unit
-  val (<==) : Event.queue -> 'a t -> 'a -> unit
+  val make : 'a -> 'a t
+  val return : 'a -> 'a t
+  val event : 'a t -> 'a E.t
+  val read : 'a t ->  'a
+  val switch : 'a t -> 'a E.t -> unit
+  val put : 'a t -> 'a -> unit
+    
+  module OP : sig
+    val (!!) : 'a t -> 'a
+    val (<<=) : 'a t -> 'a E.t -> unit
+    val (<==) : 'a t -> 'a -> unit
+  end
 end
 

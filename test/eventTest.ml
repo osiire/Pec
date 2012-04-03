@@ -1,11 +1,5 @@
 
-module E = struct
-  include Pec.Event
-  let queue = Pec.Event.make_queue ()
-  let make () = make queue
-  let return x = return queue x
-  let run () = run queue
-end
+module E = Pec.Event.Make (Pec.EventQueue.DefaultQueueM) (Pec.EventQueue.DefaultQueueI)
 
 let run_all () =
   while E.run () > 0 do () done

@@ -1,15 +1,9 @@
 
-module E = Pec.Event
-module S = struct
-  include Pec.Signal
-  let queue = E.make_queue ()
-  let make = make queue
-  let put t x = put queue t x
-  let run () = E.run queue
-end
+module E = Pec.Event.Make (Pec.EventQueue.DefaultQueueM) (Pec.EventQueue.DefaultQueueI)
+module S = Pec.Signal.Make (E)
 
 let run_all () =
-  while S.run () > 0 do () done
+  while E.run () > 0 do () done
 
 let put_test () =
   let s = S.make 1 in

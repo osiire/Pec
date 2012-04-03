@@ -8,6 +8,8 @@ clean:
   rm $(filter-proper-targets $(ls R, .))
 
 FILES[] =
+  eventQueue
+  eventSig
   event
   signal
 

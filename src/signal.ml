@@ -27,56 +27,53 @@
 
 (* $Id$ *)
 
-module E = Event
-
-type 'a t = {
+module Make ( E : EventSig.S ) = struct
+  type 'a t = {
     mutable value : 'a;
     mutable event : 'a E.t;
     switcher : ('a E.t -> unit);
   }
+      
+  let event t =
+    t.event
+      
+  let switch t (e : 'a E.t) =
+    t.switcher e
+      
+  let read t =
+    t.value
+      
+  let put t x = 
+    let e, sender = E.make () in
+    switch t e;
+    sender x
+      
+  let return x =
+    {
+      value = x;
+      event = E.never;
+      switcher = (fun _ -> ());
+    }
+      
+  let make x =
+    let ee, e_sender = E.make () in
+    let e = E.join ee in
+    let t = {
+      value = x;
+      event = e;
+      switcher = e_sender;
+    } in
+    E.subscribe (fun x -> t.value <- x) e;
+    t
 
-let event t =
-  t.event
+  let map f t =
+    let t' = make (f t.value) in
+    switch t' (E.map f t.event);
+    t'
 
-let switch t (e : 'a E.t) =
-  t.switcher e
-
-let read t =
-  t.value
-
-let put queue t x = 
-  let e, sender = E.make queue in
-  switch t e;
-  sender x
-
-let return x =
-  {
-    value = x;
-    event = E.never;
-    switcher = (fun _ -> ());
-  }
-
-let make queue x =
-  let ee, e_sender = E.make queue in
-  let e = E.join ee in
-  let t = {
-    value = x;
-    event = e;
-    switcher = e_sender;
-  } in
-  E.subscribe (fun x -> t.value <- x) e;
-  t
-
-let map queue f t =
-  let t' = make queue (f t.value) in
-  switch t' (E.map f t.event);
-  t'
-
-let run queue = 
-  E.run queue
-
-module OP = struct
-  let (!!) t = read t
-  let (<<=) t e = switch t e
-  let (<==) queue t x = put queue t x
+  module OP = struct
+    let (!!) t = read t
+    let (<<=) t e = switch t e
+    let (<==) t x = put t x
+  end
 end
