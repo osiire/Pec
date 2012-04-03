@@ -70,6 +70,17 @@ module Make ( E : EventSig.S ) = struct
   let map f t =
     _make_signal (f t.value) (E.map f t.event)
 
+  let join tt =
+    _make_signal (tt.value.value) (E.join (E.map (fun t -> t.event) tt.event))
+
+  let bind m f =
+    join (map f m)
+
+  (* utility functions *)
+
+  let app ft t =
+    _make_signal (ft.value t.value) (E.map2 (fun f x -> f x) ft.event t.event) 
+
   let map2 f a b =
     _make_signal (f a.value b.value) (E.map2 f a.event b.event)
 
@@ -82,13 +93,24 @@ module Make ( E : EventSig.S ) = struct
   let map5 f a b c d e =
     _make_signal (f a.value b.value c.value d.value e.value) (E.map5 f a.event b.event c.event d.event e.event)
 
-  let join tt =
-    _make_signal (tt.value.value) (E.join (E.map (fun t -> t.event) tt.event))
+  let fold f init e =
+    _make_signal init (E.scan f init e)
 
-  let bind m f =
-    join (map f m)
+  let reduce x e =
+    _make_signal x (E.scan (fun v f -> f v) x e)
+
+  let zip a b =
+    _make_signal (a.value, b.value) (E.zip a.event b.event)
+
+
+  let sequence tl =
+    let es =
+      List.map (fun x -> x.event) tl
+    in
+    _make_signal (List.map (fun x -> x.value) tl) (E.sequence es)
 
   module OP = struct
+    let (>>=) = bind
     let (!!) t = read t
     let (<<=) t e = switch t e
     let (<==) t x = put t x

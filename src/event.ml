@@ -304,6 +304,8 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
 
   open OP
 
+  (* utitly functions *)
+
   let scan f i e =
     let s = ref i in
     map (fun x -> tee (fun n -> s := n) (f !s x)) e

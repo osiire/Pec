@@ -37,18 +37,16 @@ module Make : functor (E : EventSig.S) -> sig
   val map3 : ('a -> 'b -> 'c -> 'd) -> 'a t -> 'b t -> 'c t -> 'd t
   val map4 : ('a -> 'b -> 'c -> 'd -> 'e) -> 'a t -> 'b t -> 'c t -> 'd t -> 'e t
   val map5 : ('a -> 'b -> 'c -> 'd -> 'e -> 'f) -> 'a t -> 'b t -> 'c t -> 'd t -> 'e t -> 'f t
-
+  val app : ('a -> 'b) t -> 'a t -> 'b t
   val join : 'a t t -> 'a t
   val bind : 'a t -> ('a -> 'b t) -> 'b t
-
-  (* val app : ('a -> 'b) t -> 'a t -> 'b t *)
-  (* val fold : ('a -> 'b -> 'a) -> 'a -> 'b E.t -> 'a t *)
-  (* val reduce : 'a -> ('a -> 'a) E.t-> 'a t *)
-  (* val sequence : 'a t list -> 'a list t *)
-  (* val zip : 'a t -> 'b t -> ('a * 'b) t *)
+  val fold : ('a -> 'b -> 'a) -> 'a -> 'b E.t -> 'a t
+  val reduce : 'a -> ('a -> 'a) E.t-> 'a t
+  val zip : 'a t -> 'b t -> ('a * 'b) t
+  val sequence : 'a t list -> 'a list t
 
   module OP : sig
-    (* val (>>=) : 'a t -> ('a -> 'b t) -> 'b t *)
+    val (>>=) : 'a t -> ('a -> 'b t) -> 'b t
     val (!!) : 'a t -> 'a              (* read *)
     val (<<=) : 'a t -> 'a E.t -> unit (* switch *)
     val (<==) : 'a t -> 'a -> unit     (* put *)
