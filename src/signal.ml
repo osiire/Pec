@@ -1,7 +1,3 @@
-(**
- * A simple implementation of Push style Event Combinator.
- *)
-
 (*   
    Copyright (c) 2011 IT Planning inc. All Rights Reserved.
  
@@ -66,10 +62,31 @@ module Make ( E : EventSig.S ) = struct
     E.subscribe (fun x -> t.value <- x) e;
     t
 
-  let map f t =
-    let t' = make (f t.value) in
-    switch t' (E.map f t.event);
+  let _make_signal v e =
+    let t' = make v in
+    switch t' e;
     t'
+
+  let map f t =
+    _make_signal (f t.value) (E.map f t.event)
+
+  let map2 f a b =
+    _make_signal (f a.value b.value) (E.map2 f a.event b.event)
+
+  let map3 f a b c =
+    _make_signal (f a.value b.value c.value) (E.map3 f a.event b.event c.event)
+
+  let map4 f a b c d =
+    _make_signal (f a.value b.value c.value d.value) (E.map4 f a.event b.event c.event d.event)
+
+  let map5 f a b c d e =
+    _make_signal (f a.value b.value c.value d.value e.value) (E.map5 f a.event b.event c.event d.event e.event)
+
+  let join tt =
+    _make_signal (tt.value.value) (E.join (E.map (fun t -> t.event) tt.event))
+
+  let bind m f =
+    join (map f m)
 
   module OP = struct
     let (!!) t = read t

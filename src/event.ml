@@ -1,7 +1,3 @@
-(**
- * A simple implementation of Push style Event Combinator.
- *)
-
 (*   
    Copyright (c) 2011 IT Planning inc. All Rights Reserved.
  
@@ -36,14 +32,20 @@ let (!%) = Printf.sprintf
 let is_debug = ref false
 let debug s = if !is_debug then print_string s else ()
 
-type ('a, 'b) choise2 = 
+type ('a, 'b) choice2 = 
   [`T1 of 'a | `T2 of 'b]
-type ('a, 'b, 'c) choise3 =  
-  [ ('a,'b) choise2 | `T3 of 'c ]
-type ('a, 'b, 'c, 'd) choise4 =  
-  [ ('a,'b, 'c) choise3 | `T4 of 'd ]
-type ('a, 'b, 'c, 'd, 'e) choise5 =  
-  [ ('a,'b, 'c, 'd) choise4 | `T5 of 'e ]
+type ('a, 'b, 'c) choice3 =  
+  [ ('a,'b) choice2 | `T3 of 'c ]
+type ('a, 'b, 'c, 'd) choice4 =  
+  [ ('a,'b, 'c) choice3 | `T4 of 'd ]
+type ('a, 'b, 'c, 'd, 'e) choice5 =  
+  [ ('a,'b, 'c, 'd) choice4 | `T5 of 'e ]
+
+let choice1 x = `T1 x
+let choice2 x = `T2 x
+let choice3 x = `T3 x
+let choice4 x = `T4 x
+let choice5 x = `T5 x
     
 module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
 
@@ -284,14 +286,14 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
       get_id () 
     in
     let rec notify id time =
-    (*debug (!%"raise %d\n" id);*)
+      (*debug (!%"raise %d\n" id);*)
       (match read id (subscribe_id, notify) time e with
           None -> ()
         | Some v -> f v);
-  (*debug "one notify end\n";*)
+       (*debug "one notify end\n";*)
     in
     ignore (set_notify (subscribe_id, notify) e)
-(*debug "subscribe end\n"*)
+    (*debug "subscribe end\n"*)
 
   let bind e f =
     join (map f e)
@@ -315,11 +317,6 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
   let filter_map f e =
     e >>= (fun x -> match f x with Some v -> _return v e | None -> never)
 
-  let map2 f e1 e2 =
-    choose
-      [e1 >>= (fun x -> e2 >>= (fun y -> _return (f x y) e2));
-       e2 >>= (fun y -> e1 >>= (fun x -> _return (f x y) e1))]
-
   let sequence ms =
     let mcons ms m =
       m >>= (fun x -> ms >>= (fun y -> _return (x :: y) ms))
@@ -328,7 +325,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
     List.fold_left mcons (map (fun x -> [x]) (List.hd r)) (List.tl r)
 
   let zip e1 e2 =
-    choose [ map (fun v -> `T1 v) e1; map (fun v -> `T2 v) e2 ]
+    choose [ map choice1 e1; map choice2 e2 ]
     +> scan (fun (v1, v2) v ->
       match v1, v2, v with
         | Some v1, Some v2, `T1 v -> Some v, Some v2
@@ -394,4 +391,18 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
 
   let pairwise e =
     zip e (delay 1 e)
+
+  let map2 f a b =
+    a >>= (fun a -> b >>= (fun b' -> _return (f a b') b))
+
+  let map3 f a b c =
+    a >>= (fun a -> b >>= (fun b -> c >>= (fun c' -> _return (f a b c') c)))
+
+  let map4 f a b c d =
+    a >>= (fun a -> b >>= (fun b -> c >>= (fun c -> d >>= (fun d' -> _return (f a b c d') d))))
+
+  let map5 f a b c d e =
+    a >>= (fun a -> b >>= (fun b -> c >>= (fun c -> d >>= (fun d -> e >>= (fun e' ->  _return (f a b c d e') e)))))
+
+
 end
