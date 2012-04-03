@@ -26,22 +26,23 @@
 module Make ( E : EventSig.S ) = struct
   type 'a t = {
     mutable value : 'a;
-    mutable event : 'a E.t;
+    event : 'a E.t;
     switcher : ('a E.t -> unit);
   }
       
   let event t =
     t.event
       
-  let switch t (e : 'a E.t) =
-    t.switcher e
+  let switch t t' =
+    t.value <- t'.value;
+    t.switcher t'.event
       
   let read t =
     t.value
       
   let put t x = 
     let e, sender = E.make () in
-    switch t e;
+    t.switcher e;
     sender x
       
   let return x =
@@ -64,7 +65,7 @@ module Make ( E : EventSig.S ) = struct
 
   let _make_signal v e =
     let t' = make v in
-    switch t' e;
+    t'.switcher e;
     t'
 
   let map f t =
@@ -112,7 +113,7 @@ module Make ( E : EventSig.S ) = struct
   module OP = struct
     let (>>=) = bind
     let (!!) t = read t
-    let (<<=) t e = switch t e
+    let (<<=) a b = switch a b
     let (<==) t x = put t x
   end
 end

@@ -30,7 +30,7 @@ module Make : functor (E : EventSig.S) -> sig
   val event : 'a t -> 'a E.t
   val read : 'a t ->  'a
   val put : 'a t -> 'a -> unit
-  val switch : 'a t -> 'a E.t -> unit
+  val switch : 'a t -> 'a t -> unit
 
   val map : ('a -> 'b) -> 'a t -> 'b t
   val map2 : ('a -> 'b -> 'c) -> 'a t -> 'b t -> 'c t
@@ -48,7 +48,7 @@ module Make : functor (E : EventSig.S) -> sig
   module OP : sig
     val (>>=) : 'a t -> ('a -> 'b t) -> 'b t
     val (!!) : 'a t -> 'a              (* read *)
-    val (<<=) : 'a t -> 'a E.t -> unit (* switch *)
+    val (<<=) : 'a t -> 'a t -> unit   (* switch *)
     val (<==) : 'a t -> 'a -> unit     (* put *)
   end
 end
