@@ -44,15 +44,8 @@ module Make ( E : EventSig.S ) = struct
     let e, sender = E.make () in
     t.switcher e;
     sender x
-      
+            
   let return x =
-    {
-      value = x;
-      event = E.never;
-      switcher = (fun _ -> ());
-    }
-      
-  let make x =
     let ee, e_sender = E.make () in
     let e = E.join ee in
     let t = {
@@ -60,11 +53,11 @@ module Make ( E : EventSig.S ) = struct
       event = e;
       switcher = e_sender;
     } in
-    E.subscribe (fun x -> t.value <- x) e;
+    E.subscribe (fun x -> t.value <- x) t.event;
     t
 
   let _make_signal v e =
-    let t' = make v in
+    let t' = return v in
     t'.switcher e;
     t'
 
@@ -113,7 +106,7 @@ module Make ( E : EventSig.S ) = struct
   module OP = struct
     let (>>=) = bind
     let (!!) t = read t
-    let (<<=) a b = switch a b
+    let (<=<) a b = switch a b
     let (<==) t x = put t x
   end
 end

@@ -1,6 +1,6 @@
 
-module E = Pec
-open Pec.OP
+module E = Pec.Event.Make (Pec.EventQueue.DefaultQueueM) (Pec.EventQueue.DefaultQueueI)
+open E.OP
 
 let (!%) = Printf.sprintf
 let (+>) f g = g f
@@ -10,7 +10,6 @@ let mouse_up, send_up = E.make ()
 let mouse_move, send_move = E.make ()
 
 let dragging md mu mm =
-  let open E in
   md >>= (fun dloc -> E.choose [
     E.map (fun uloc -> `Drop (dloc, uloc)) mu; 
     E.map (fun mloc -> `Drag (dloc, mloc)) mm;

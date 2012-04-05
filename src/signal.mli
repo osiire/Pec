@@ -25,7 +25,6 @@ module Make : functor (E : EventSig.S) -> sig
 
   type 'a t
 
-  val make : 'a -> 'a t
   val return : 'a -> 'a t
   val event : 'a t -> 'a E.t
   val read : 'a t ->  'a
@@ -48,7 +47,7 @@ module Make : functor (E : EventSig.S) -> sig
   module OP : sig
     val (>>=) : 'a t -> ('a -> 'b t) -> 'b t
     val (!!) : 'a t -> 'a              (* read *)
-    val (<<=) : 'a t -> 'a t -> unit   (* switch *)
+    val (<=<) : 'a t -> 'a t -> unit   (* switch *)
     val (<==) : 'a t -> 'a -> unit     (* put *)
   end
 end
