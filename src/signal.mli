@@ -43,6 +43,7 @@ module Make : functor (E : EventSig.S) -> sig
   val reduce : 'a -> ('a -> 'a) E.t-> 'a t
   val zip : 'a t -> 'b t -> ('a * 'b) t
   val sequence : 'a t list -> 'a list t
+  val fix : ('a t -> 'a t) -> 'a -> 'a t
 
   module OP : sig
     val (>>=) : 'a t -> ('a -> 'b t) -> 'b t

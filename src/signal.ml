@@ -103,6 +103,11 @@ module Make ( E : EventSig.S ) = struct
     in
     _make_signal (List.map (fun x -> x.value) tl) (E.sequence es)
 
+  let fix f init =
+    let v = return init in
+    switch v (f v);
+    v
+
   module OP = struct
     let (>>=) = bind
     let (!!) t = read t

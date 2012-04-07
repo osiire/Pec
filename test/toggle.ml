@@ -1,79 +1,125 @@
 
+let (!%) = Printf.sprintf
+let (+>) f g = g f
+let p s = Printf.printf "%s\n" s; flush stdout
+
 module E = Pec.Event.Make (Pec.EventQueue.DefaultQueueM) (Pec.EventQueue.DefaultQueueI)
 module S = Pec.Signal.Make (E)
 open S.OP
 open Pec.Event
-
-let (!%) = Printf.sprintf
-let (+>) f g = g f
-let p s = Printf.printf "%s\n" s; flush stdout
 
 let b1_click, send_b1_click = E.make ()
 let b2_click, send_b2_click = E.make ()
 let mode_click, send_mode_click = E.make ()
 let clear_click, send_clear_click = E.make ()
 
-(* 複合モード *)
-let mode_on = S.fold (fun b () -> not b) false mode_click
+type on_off = ON | OFF
+let flip = function ON -> OFF | OFF -> ON
+let to_string = function ON -> "ON" | OFF -> "OFF"
 
-(* b1 *)
-let b1_on = S.return false
-let when_b1_on e = E.filter (fun _ -> S.read b1_on) e
-let when_b1_off e = E.filter (fun _ -> not (S.read b1_on)) e
-let when_mode_on e = E.filter (fun _ -> S.read mode_on) e
-let when_mode_off e = E.filter (fun _ -> not (S.read mode_on)) e
-let go_on = when_b1_off b1_click
-let go_off_1 = when_mode_on b1_click
-let go_off_2 = when_mode_off (E.choose [b2_click])
-let go_off_3 = when_b1_on clear_click
-let b1_true = E.map (fun _ -> true) go_on
-let b1_false = 
-  E.choose [go_off_1; go_off_2; go_off_3]
-  +> when_b1_on
-  +> E.map (fun _ -> false)
+(* 
+ * b1 and b2 is ON-OFF button.
+ * when mode is ON, b1 and b2 are independent toggle button.
+ * when mode is OFF, b1 and b2 are exclusive button(like radio button).
+ *)
+let mode = S.fold (fun b () -> flip b) OFF mode_click
+let when_on b e = E.filter (fun _ -> S.read b = ON) e
+let when_off b e = E.filter (fun _ -> S.read b = OFF) e
 
-(* 非破壊的代入 *)
-let _ = 
-  b1_on <=< S.fold (fun _ b -> b) false (E.choose [b1_true; b1_false])
+let button_state self_clicked others_clicked =
+  let state = S.return OFF in
+  let to_on =
+    when_off state self_clicked 
+    +> E.map (fun _ -> ON)
+  in
+  let to_off = 
+    E.choose [
+      when_on mode self_clicked;
+      when_off mode others_clicked;
+      clear_click
+    ]
+    +> when_on state
+    +> E.map (fun _ -> OFF)
+  in
+  state <=< S.fold (fun _ b -> b) OFF (E.choose [to_on; to_off]);
+  state
 
-let run_all () =
-  while E.run () > 0 do () done
+let b1 = button_state b1_click (E.choose [b2_click])
+let b2 = button_state b2_click (E.choose [b1_click])
 
 (* テスト開始 *)
 let _ =
-  run_all ();
-  assert (S.read b1_on = false);
-  S.event b1_on
-  +> E.subscribe (fun b -> print_string (!%"%b\n" b));
+  E.run_all ();
+  assert (S.read b1 = OFF);
+  S.event b1
+  +> E.subscribe (fun b -> print_string (!%"%s\n" (to_string b)));
 
   send_b1_click ();
-  run_all ();
-  assert (S.read b1_on = true);
+  E.run_all ();
+  assert (S.read b1 = ON);
 
   send_b1_click ();
-  run_all ();
-  assert (S.read b1_on = true);
+  E.run_all ();
+  assert (S.read b1 = ON);
 
   send_b2_click ();
-  run_all ();
-  assert (S.read b1_on = false);
+  E.run_all ();
+  assert (S.read b1 = OFF);
 
   send_mode_click ();
-  run_all ();
-  assert (S.read b1_on = false);
+  E.run_all ();
+  assert (S.read b1 = OFF);
 
   send_b1_click ();
-  run_all ();
-  assert (S.read b1_on = true);
+  E.run_all ();
+  assert (S.read b1 = ON);
 
   send_b1_click ();
-  run_all ();
-  assert (S.read b1_on = false);
+  E.run_all ();
+  assert (S.read b1 = OFF);
 
   send_b1_click ();
-  run_all ();
-  assert (S.read b1_on = true);
+  E.run_all ();
+  assert (S.read b1 = ON);
 
   send_clear_click ();
-  run_all ();
-  assert (S.read b1_on = false)
+  E.run_all ();
+  assert (S.read b1 = OFF)
+
+
+(* traditional way
+
+let mode = ref OFF
+let b1 = ref OFF
+let b2 = ref OFF
+let mode_getter () = !mode
+let mode_setter b = mode := b
+let b1_getter () = !b1
+let b1_setter b = b1 := b
+let b2_getter () = !b2
+let b2_setter b = b2 := b
+
+let on_b_clicked (getter, setter) others () =
+  if getter () = ON then
+    if mode_getter () = ON then
+      setter OFF
+    else
+      ()
+  else begin
+    setter ON;
+    if mode_getter () = ON then
+      ()
+    else
+      List.iter (fun setter -> setter OFF) others
+  end
+
+let on_b1_clicked = on_b_clicked (b1_getter, b1_setter) [b2_setter]
+let on_b2_clicked = on_b_clicked (b2_getter, b2_setter)  [b1_setter]
+
+let on_clear_clicked () =
+  b1_setter OFF;
+  b2_setter OFF
+
+let on_mode_clicked () =
+  mode_setter (flip (mode_getter ()))
+*)

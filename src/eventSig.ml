@@ -66,6 +66,8 @@ module type S = sig
   (** [run ()] runs a PEC event and returns number of events remained in queue. *)
   val run : unit -> int
 
+  val run_all : unit -> unit
+
   module OP : sig
     val (>>=) : 'a t -> ('a -> 'b t) -> 'b t
   end

@@ -106,6 +106,9 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
     in
     M.length I.queue
 
+  let run_all () =
+    while run () > 0 do () done
+
   let make () =
     let cell = {
       id = get_id ();
