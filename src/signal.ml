@@ -25,35 +25,43 @@
 
 module Make ( E : EventSig.S ) = struct
   type 'a t = {
-    mutable value : 'a;
+    value : 'a ref;
     event : 'a E.t;
     switcher : ('a E.t -> unit);
+    mutable subscribe_id : E.subscribe_id;
   }
       
   let event t =
     t.event
       
   let switch t t' =
-    t.value <- t'.value;
+    t.value := !(t'.value);
     t.switcher t'.event
       
   let read t =
-    t.value
+    !(t.value)
       
   let put t x = 
     let e, sender = E.make () in
     t.switcher e;
     sender x
+
+  let finaliser t =
+    E.unsubscribe t.subscribe_id t.event
             
   let return x =
     let ee, e_sender = E.make () in
     let e = E.join ee in
+    let value = ref x in
     let t = {
-      value = x;
+      value = value;
       event = e;
       switcher = e_sender;
-    } in
-    E.subscribe (fun x -> t.value <- x) t.event;
+      subscribe_id = Obj.magic (); (* !! *)
+    }
+    in
+    t.subscribe_id <- E.subscribe (fun x -> value := x) t.event;
+    Gc.finalise finaliser t;
     t
 
   let _make_signal v e =
@@ -62,10 +70,10 @@ module Make ( E : EventSig.S ) = struct
     t'
 
   let map f t =
-    _make_signal (f t.value) (E.map f t.event)
+    _make_signal (f (read t)) (E.map f t.event)
 
   let join tt =
-    _make_signal (tt.value.value) (E.join (E.map (fun t -> t.event) tt.event))
+    _make_signal ((read (read tt))) (E.join (E.map (fun t -> t.event) tt.event))
 
   let bind m f =
     join (map f m)
@@ -73,19 +81,19 @@ module Make ( E : EventSig.S ) = struct
   (* utility functions *)
 
   let app ft t =
-    _make_signal (ft.value t.value) (E.map2 (fun f x -> f x) ft.event t.event) 
+    _make_signal ((read ft) (read t)) (E.map2 (fun f x -> f x) ft.event t.event) 
 
   let map2 f a b =
-    _make_signal (f a.value b.value) (E.map2 f a.event b.event)
+    _make_signal (f (read a) (read b)) (E.map2 f a.event b.event)
 
   let map3 f a b c =
-    _make_signal (f a.value b.value c.value) (E.map3 f a.event b.event c.event)
+    _make_signal (f (read a) (read b) (read c)) (E.map3 f a.event b.event c.event)
 
   let map4 f a b c d =
-    _make_signal (f a.value b.value c.value d.value) (E.map4 f a.event b.event c.event d.event)
+    _make_signal (f (read a) (read b) (read c) (read d)) (E.map4 f a.event b.event c.event d.event)
 
   let map5 f a b c d e =
-    _make_signal (f a.value b.value c.value d.value e.value) (E.map5 f a.event b.event c.event d.event e.event)
+    _make_signal (f (read a) (read b) (read c) (read d) (read e)) (E.map5 f a.event b.event c.event d.event e.event)
 
   let fold f init e =
     _make_signal init (E.scan f init e)
@@ -94,14 +102,14 @@ module Make ( E : EventSig.S ) = struct
     _make_signal x (E.scan (fun v f -> f v) x e)
 
   let zip a b =
-    _make_signal (a.value, b.value) (E.zip a.event b.event)
+    _make_signal ((read a), (read b)) (E.zip a.event b.event)
 
 
   let sequence tl =
     let es =
       List.map (fun x -> x.event) tl
     in
-    _make_signal (List.map (fun x -> x.value) tl) (E.sequence es)
+    _make_signal (List.map (fun x -> (read x)) tl) (E.sequence es)
 
   let fix f init =
     let v = return init in

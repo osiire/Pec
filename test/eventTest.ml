@@ -4,6 +4,8 @@ module E = Pec.Event.Make (Pec.EventQueue.DefaultQueueM) (Pec.EventQueue.Default
 let run_all () =
   while E.run () > 0 do () done
 
+let (!%) = Printf.sprintf
+
 let direct_test () =
   let seq = ref [] in
   let cell, sender = E.make () in
@@ -14,6 +16,7 @@ let direct_test () =
   sender 4;
   sender 5;
   run_all ();
+  (*print_string (String.concat "," (List.map string_of_int !seq));*)
   assert ( List.rev !seq = [1;2;3;4;5])
 
 let map_test () =
@@ -24,7 +27,7 @@ let map_test () =
   sender 1;
   sender 2;
   run_all ();
-  assert ( List.rev !seq = [2;3])
+  assert ( List.rev !seq = [2;3;])
 
 let choose_test () =
   let seq = ref [] in
@@ -216,5 +219,5 @@ let _ =
   List.iter (fun (name, f) ->
     print_string  (!%"running %s.." name);
     f ();
-    print_string "done\n") tests
+    print_string "done\n") tests;
   

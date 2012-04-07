@@ -23,6 +23,7 @@
 
 module type S = sig
   type 'a t
+  type subscribe_id
       
   (** [make ()] makes a new event and sender function.*)
   val make : unit -> 'a t * ('a -> unit)
@@ -61,7 +62,8 @@ module type S = sig
     
   (** [subscribe f e] attaches the [f] to the specified event. 
       The [f] will be called when the [e] will occurred. *)
-  val subscribe : ('a -> unit) -> 'a t -> unit
+  val subscribe : ('a -> unit) -> 'a t -> subscribe_id
+  val unsubscribe : subscribe_id -> 'a t -> unit
 
   (** [run ()] runs a PEC event and returns number of events remained in queue. *)
   val run : unit -> int

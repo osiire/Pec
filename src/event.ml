@@ -49,7 +49,8 @@ let choice5 x = `T5 x
     
 module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
 
-  type id = int
+  type cell_id = int
+  type subscribe_id = int
   type time = int
       
   type 'a latest = {
@@ -58,9 +59,9 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
   }
 
   type 'a mcell = {
-    id : id;
+    id : cell_id;
     mutable data : 'a option;
-    mutable notify : (id * (id -> time -> unit)) list;
+    mutable notify : (subscribe_id * (cell_id -> time -> unit)) list;
     mutable e_latest : 'a latest option;
   }
       
@@ -101,7 +102,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
   let run () =
     let _ =
       match maybe M.take I.queue with
-          `Val e -> e ()
+        | `Val e -> e ()
         | _ -> ()
     in
     M.length I.queue
@@ -173,7 +174,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
         debug (!%"set_notify! %d\n" cell.id);
         cell.notify <- (id, notify) :: cell.notify
 
-  let rec set_notify : 'a. (id * (id -> time -> unit)) -> 'a event -> unit = 
+  let rec set_notify : 'a. (subscribe_id * (cell_id -> time -> unit)) -> 'a event -> unit = 
     fun notify -> function
       | Cell cell ->
         set_notify_to_cell cell notify
@@ -186,7 +187,23 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
         may_map (lazy ()) (set_notify notify) j.inner
       | _ -> ()
 
-  let rec set_notify_with_id : 'a. id -> (id * (id -> time -> unit)) -> 'a event -> bool = 
+  let remove_cell_notify cell id =
+    cell.notify <- List.filter (fun (id', _) -> id' <> id) cell.notify
+
+  let rec remove_notify : 'a. subscribe_id -> 'a event -> unit = 
+    fun id -> function
+      | Cell cell ->
+        remove_cell_notify cell id
+      | Wrap w ->
+        remove_notify id w.event
+      | Choose c ->
+        List.iter (remove_notify id) c.choose
+      | Join j ->
+        remove_notify id j.outer;
+        may_map (lazy ()) (remove_notify id) j.inner
+      | _ -> ()
+
+  let rec set_notify_with_id : 'a. cell_id -> (subscribe_id * (cell_id -> time -> unit)) -> 'a event -> bool = 
     fun id notify -> function
       | Cell cell ->
         if cell.id = id then begin
@@ -198,7 +215,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
         set_notify_with_id id notify w.event
       | Choose c ->
         let rec set_notify_one = function
-        [] -> false
+          | [] -> false
           | hd :: tl ->
             if set_notify_with_id id notify hd then
               true
@@ -222,7 +239,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
   let with_latest latest setter time reader set_notify =
     match get_latest latest time with
         None ->
-      (* 同じ時刻の呼び出しはキャッシュとして返せるようにしておく *)
+          (* 同じ時刻の呼び出しはキャッシュとして返せるようにしておく *)
           tee (fun v -> setter (Some { time = time; value = v })) (reader ())
       | v -> 
         set_notify ();
@@ -231,7 +248,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
   let set_notify_only id notify e =
     fun () -> ignore (set_notify_with_id id notify e)
 
-  let rec read : 'a. id -> (id * (id -> time -> unit)) -> time -> 'a event -> 'a option = 
+  let rec read : 'a. cell_id -> (subscribe_id * (cell_id -> time -> unit)) -> time -> 'a event -> 'a option = 
     fun id notify time -> function
       | Cell cell ->
         if cell.id = id then begin
@@ -288,15 +305,19 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
     let subscribe_id = 
       get_id () 
     in
-    let rec notify id time =
+    let rec notify cell_id time =
       (*debug (!%"raise %d\n" id);*)
-      (match read id (subscribe_id, notify) time e with
+      (match read cell_id (subscribe_id, notify) time e with
           None -> ()
         | Some v -> f v);
        (*debug "one notify end\n";*)
     in
-    ignore (set_notify (subscribe_id, notify) e)
+    ignore (set_notify (subscribe_id, notify) e);
+    subscribe_id
     (*debug "subscribe end\n"*)
+
+  let unsubscribe subscribe_id e =
+    remove_notify subscribe_id e
 
   let bind e f =
     join (map f e)
