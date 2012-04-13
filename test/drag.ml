@@ -22,16 +22,17 @@ let run_all () =
 let _ =
   dragging mouse_down mouse_up mouse_move
   +> E.subscribe (function 
-    | `Drag (sloc, eloc) -> print_string (!%"Drag %d,%d\n" sloc eloc)
-    | `Drop (sloc, eloc) -> print_string (!%"Drop %d,%d\n" sloc eloc));
-  send_down 10;
-  send_move 11;
-  send_move 12;
-  send_up 13;
-  send_move 14;
-  send_move 15;
-  send_down 16;
-  send_move 17;
-  send_move 18;
-  send_up 19;
-  run_all ()
+    | `Drag (sloc, eloc) -> print_string (!%"Drag %d,%d\n" sloc eloc); flush stdout;
+    | `Drop (sloc, eloc) -> print_string (!%"Drop %d,%d\n" sloc eloc); flush stdout;);
+  while true do
+    (match Random.int 3 with
+      | 0 -> send_down (Random.int 10);
+      | 1 -> send_move (Random.int 10);
+      | 2 -> send_up (Random.int 10);
+      | _ -> ());
+    run_all ();
+    Thread.delay 0.01;
+    Gc.full_major ();
+    Gc.compact ()
+  done;
+  

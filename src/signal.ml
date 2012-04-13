@@ -51,7 +51,7 @@ module Make ( E : EventSig.S ) = struct
             
   let return x =
     let ee, e_sender = E.make () in
-    let e = E.join ee in
+    let e = E.switch ee in
     let value = ref x in
     let t = {
       value = value;
@@ -69,14 +69,17 @@ module Make ( E : EventSig.S ) = struct
     t'.switcher e;
     t'
 
+  let make v e =
+    _make_signal v e
+
   let map f t =
     _make_signal (f (read t)) (E.map f t.event)
 
-  let join tt =
-    _make_signal ((read (read tt))) (E.join (E.map (fun t -> t.event) tt.event))
+  let _join tt =
+    _make_signal ((read (read tt))) (E.switch (E.map (fun t -> t.event) tt.event))
 
-  let bind m f =
-    join (map f m)
+  let sbind m f =
+    _join (map f m)
 
   (* utility functions *)
 
@@ -116,8 +119,11 @@ module Make ( E : EventSig.S ) = struct
     switch v (f v);
     v
 
+  let filter f init t =
+    _make_signal init (E.filter f t.event)
+
   module OP = struct
-    let (>>=) = bind
+    let (>>=) = sbind
     let (!!) t = read t
     let (<=<) a b = switch a b
     let (<==) t x = put t x

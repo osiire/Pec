@@ -41,16 +41,16 @@ let choose_test () =
   assert ( List.rev !seq = [3;4])
 
 let never_test () =
-  E.subscribe (fun x -> assert false) E.never;
+  let _ = E.subscribe (fun x -> assert false) E.never in
   run_all ()
 
-let join_test () =
+let switch_test () =
   let seq = ref [] in
   let cell1, sender1 = E.make () in
   let cell2, sender2 = E.make () in
   let cell3, sender3 = E.make () in
-  let e = E.join cell2 in
-  E.subscribe (fun v -> seq := v :: !seq) e;
+  let e = E.switch cell2 in
+  let _ = E.subscribe (fun v -> seq := v :: !seq) e in
   sender2 cell1;
   sender1 9;
   sender1 3;
@@ -64,7 +64,7 @@ let scan_test () =
   let seq = ref [] in
   let cell1, sender1 = E.make () in
   let e = E.scan (fun s x -> s + x) 0 cell1 in
-  E.subscribe (fun v -> seq := v :: !seq) e;
+  let _ = E.subscribe (fun v -> seq := v :: !seq) e in
   sender1 1;
   sender1 2;
   sender1 3;
@@ -76,7 +76,7 @@ let filter_test () =
   let seq = ref [] in
   let cell1, sender1 = E.make () in
   let e = E.filter (fun x -> x > 0 && x < 5) cell1 in
-  E.subscribe (fun v -> seq := v :: !seq) e;
+  let _ = E.subscribe (fun v -> seq := v :: !seq) e in
   sender1 ~-1;
   sender1 1;
   sender1 2;
@@ -93,8 +93,8 @@ let map2_test () =
   let cell1, sender1 = E.make () in
   let e1 = E.map (fun x -> x + 1) cell1 in
   let e2 = E.map (fun x -> x + 2) cell1 in
-  E.subscribe (fun v -> seq1 := v :: !seq1) e1;
-  E.subscribe (fun v -> seq2 := v :: !seq2) e2;
+  let _ = E.subscribe (fun v -> seq1 := v :: !seq1) e1 in
+  let _ = E.subscribe (fun v -> seq2 := v :: !seq2) e2 in
   sender1 1;
   sender1 2;
   sender1 3;
@@ -102,16 +102,16 @@ let map2_test () =
   assert ( List.rev !seq1 = [2;3;4]);
   assert ( List.rev !seq2 = [3;4;5])  
 
-let jmap2_test () =
+let smap2_test () =
   let seq1 = ref [] in
   let seq2 = ref [] in
   let cell1, sender1 = E.make () in
   let cell2, sender2 = E.make () in
-  let j = E.join cell1 in
+  let j = E.switch cell1 in
   let e1 = E.map (fun x -> x + 1) j in
   let e2 = E.map (fun x -> x + 2) j in
-  E.subscribe (fun v -> seq1 := v :: !seq1) e1;
-  E.subscribe (fun v -> seq2 := v :: !seq2) e2;
+  let _ = E.subscribe (fun v -> seq1 := v :: !seq1) e1 in
+  let _ = E.subscribe (fun v -> seq2 := v :: !seq2) e2 in
   sender1 cell2;
   sender2 1;
   sender2 2;
@@ -125,15 +125,15 @@ let jmap2_test () =
   assert ( List.rev !seq1 = [2;3;4;6;7]);
   assert ( List.rev !seq2 = [3;4;5;7;8])
 
-let bind_test () =
+let sbind_test () =
   let seq = ref [] in
   let cell1, sender1 = E.make () in
   let cell2, sender2 = E.make () in
   let cell3, sender3 = E.make () in
   let e1 = E.map (fun x -> x + 1) cell1 in
   let e2 = E.map (fun x -> x + 2) cell2 in
-  let e3 = E.bind cell3 (fun b -> if b then e1 else e2) in
-  E.subscribe (fun v -> seq := v :: !seq) e3;
+  let e3 = E.sbind cell3 (fun b -> if b then e1 else e2) in
+  let _ = E.subscribe (fun v -> seq := v :: !seq) e3 in
   sender1 1;
   sender2 2;
   sender3 true;
@@ -155,7 +155,7 @@ let diamond_test () =
   let e1 = E.map (fun x -> x + 1) cell1 in
   let e2 = E.map (fun x -> x + 2) cell1 in
   let e3 = E.choose [e1; e2] in
-  E.subscribe (fun v -> seq := v :: !seq) e3;  
+  let _ = E.subscribe (fun v -> seq := v :: !seq) e3 in
   sender1 1;
   sender1 2;
   run_all ();
@@ -167,19 +167,21 @@ let zip_test () =
   let cell1, sender1 = E.make () in
   let cell2, sender2 = E.make () in
   let e1 = E.zip cell1 cell2 in
-  E.subscribe (fun v -> seq := v :: !seq) e1;
+  let _ = E.subscribe (fun v -> seq := v :: !seq) e1 in
   run_all ();
   sender1 1;
   sender2 2;
   sender2 3;
   sender1 4;
+  sender1 5;
+  sender1 6;
   run_all ();
-  assert ( List.rev !seq = [1,2; 1,3; 4,3] )
+  assert ( List.rev !seq = [1,2; 4,3;] )
 
 let once_test () =
   let seq = ref [] in
   let cell1, sender1 = E.make () in
-  E.subscribe (fun v -> seq := v :: !seq) (E.once cell1);
+  let _ = E.subscribe (fun v -> seq := v :: !seq) (E.once cell1) in
   sender1 1;
   sender1 2;
   sender1 3;
@@ -190,9 +192,51 @@ let once_test () =
 let return_test () =
   let seq = ref [] in
   let e = E.return 2 in
-  E.subscribe (fun v -> seq := v :: !seq) e;
+  let _ =  E.subscribe (fun v -> seq := v :: !seq) e in
   run_all ();
   assert ( !seq = [2] )
+
+module QC = WQuickCheck
+
+(* for being able to test (int -> bool) *)
+module Testable_int_to_bool =
+  QC.Testable_fun
+    (* for generating random int *)
+    (QC.Arbitrary_int)
+    (* for printing out int *)
+    (QC.PShow_int)
+    (QC.Testable_bool)
+
+module I2B = QC.Check(Testable_int_to_bool)
+
+let monad_assoc_test () =
+  let (>>=) = E.sbind in
+  let m, sender = E.make () in
+  let e1, sender_e1 = E.make () in
+  let e2, sender_e2 = E.make () in
+  let f x = E.map (fun v -> v - x) e1 in
+  let g x = E.map (fun v -> v + x) e2 in
+  let a = (m >>= f) >>= g in
+  let b = m >>= (fun x -> (f x) >>= g) in
+  let av = ref 0 in
+  let bv = ref 0 in
+  let _ = E.subscribe (fun v -> av := v) a in
+  let _ = E.subscribe (fun v -> bv := v) b in
+  let prop_a_b_same : int -> bool =
+    fun i -> 
+      let _ =
+        match Random.int 3 with
+          | 0 -> print_string (!%"sender %d\n" i); sender i
+          | 1 -> print_string (!%"sender_e1 %d\n" i); sender_e1 i
+          | 2 -> print_string (!%"sender_e2 %d\n" i); sender_e2 i
+          | _ -> ()
+      in
+      flush stdout;
+      run_all ();
+      !av = !bv
+  in
+  (*I2B.verboseCheck { QC.quick with QC.maxTest = 100 } prop_a_b_same*)
+  I2B.check { QC.quick with QC.maxTest = 100 } prop_a_b_same
 
 let tests =
   [ 
@@ -200,12 +244,12 @@ let tests =
     "map test", map_test;
     "choose test", choose_test;
     "never test", never_test;
-    "join test", join_test;
+    "switch test", switch_test;
     "scan test", scan_test;
     "filter test", filter_test;
     "map2 test", map2_test;
-    "jmap2 test", jmap2_test;
-    "bind test", bind_test;
+    "smap2 test", smap2_test;
+    "sbind test", sbind_test;
     "diamond test", diamond_test;
     "zip test", zip_test;
     "once test", once_test;

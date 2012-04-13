@@ -40,12 +40,12 @@ module type S = sig
   
   val never : 'a t
 
-  (** [join ee] is a event which will be raised when a inner event occurred. 
+  (** [switch ee] is a event which will be raised when a inner event occurred. 
     "Inner event" is a event taken from outer event [ee].*)
-  val join : 'a t t -> 'a t
+  val switch : 'a t t -> 'a t
 
-  (** [bind e f] is [join (map f e)] *)
-  val bind : 'a t -> ('a -> 'b t) -> 'b t
+  (** [sbind e f] is [switch (map f e)] *)
+  val sbind : 'a t -> ('a -> 'b t) -> 'b t
   val scan : ('a -> 'b -> 'a) -> 'a -> 'b t -> 'a t
   val filter : ('a -> bool) -> 'a t -> 'a t
   val filter_map : ('a -> 'b option) -> 'a t -> 'b t

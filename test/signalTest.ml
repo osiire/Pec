@@ -6,7 +6,7 @@ let run_all () =
   while E.run () > 0 do () done
 
 let put_test () =
-  let s = S.make 1 in
+  let s = S.return 1 in
   assert( S.read s = 1 );
   S.put s 2;
   run_all ();

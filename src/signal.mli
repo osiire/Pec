@@ -26,9 +26,14 @@ module Make : functor (E : EventSig.S) -> sig
   type 'a t
 
   val return : 'a -> 'a t
+  val make : 'a -> 'a E.t -> 'a t
   val event : 'a t -> 'a E.t
   val read : 'a t ->  'a
+    
+  (** [put s v] puts [v] into [s]. *)
   val put : 'a t -> 'a -> unit
+
+  (** [switch s1 s2] connect the dependency of [s2] into [s1]. signals depends on [s1] still *)
   val switch : 'a t -> 'a t -> unit
 
   val map : ('a -> 'b) -> 'a t -> 'b t
@@ -37,13 +42,13 @@ module Make : functor (E : EventSig.S) -> sig
   val map4 : ('a -> 'b -> 'c -> 'd -> 'e) -> 'a t -> 'b t -> 'c t -> 'd t -> 'e t
   val map5 : ('a -> 'b -> 'c -> 'd -> 'e -> 'f) -> 'a t -> 'b t -> 'c t -> 'd t -> 'e t -> 'f t
   val app : ('a -> 'b) t -> 'a t -> 'b t
-  val join : 'a t t -> 'a t
-  val bind : 'a t -> ('a -> 'b t) -> 'b t
+  val sbind : 'a t -> ('a -> 'b t) -> 'b t
   val fold : ('a -> 'b -> 'a) -> 'a -> 'b E.t -> 'a t
   val reduce : 'a -> ('a -> 'a) E.t-> 'a t
   val zip : 'a t -> 'b t -> ('a * 'b) t
   val sequence : 'a t list -> 'a list t
   val fix : ('a t -> 'a t) -> 'a -> 'a t
+  val filter : ('a -> bool) -> 'a -> 'a t -> 'a t
 
   module OP : sig
     val (>>=) : 'a t -> ('a -> 'b t) -> 'b t
