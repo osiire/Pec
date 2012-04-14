@@ -60,6 +60,7 @@ module Make ( E : EventSig.S ) = struct
       subscribe_id = Obj.magic (); (* !! *)
     }
     in
+    (* subscribeハンドラはtを参照してはいけない. ハンドラがtを参照するとtがガベコレされなくなる. *)
     t.subscribe_id <- E.subscribe (fun x -> value := x) t.event;
     Gc.finalise finaliser t;
     t

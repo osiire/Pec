@@ -162,7 +162,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
 
   let switch ee = Switch {
     outer = ee;
-    inner = [];
+    inner = []; (* 過去のinnerを全部記憶するとswitchはjoinになる.*)
     s_latest = None
   }
 
@@ -289,9 +289,9 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
         debug "switch";
         let rec read_one_of = function
           | [] -> None
-          | [hd] -> 
+          | [hd] -> (* s.innerリストへは単一要素のしか入っていないはず. *)
             read id notify time hd
-          | _ -> failwith "must not occur"
+          | _ -> failwith "must not happen"
         in
         let switch_read () =
           match read id notify time s.outer with
@@ -300,7 +300,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
               read_one_of s.inner
             | Some inner ->
               debug "inner\n";
-              s.inner <- [inner];
+              s.inner <- [inner]; (* innerは一つに限定する. switchの定義. *)
               if inner <> Never then begin
                 ignore (set_notify notify inner);
                 read id notify time inner
@@ -437,15 +437,19 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
     zip e (delay 1 e)
 
   let map2 f a b =
-    zip a b +> map (fun (a, b) -> f a b)
+    sequence [map choice1 a; map choice2 b]
+    +> map (function [`T1 a; `T2 b] -> f a b | _ -> failwith "must not happen")
 
   let map3 f a b c =
-    zip a b +> zip c +> map (fun (c, (a, b)) -> f a b c)
+    sequence [map choice1 a; map choice2 b; map choice3 c]
+    +> map (function [`T1 a; `T2 b; `T3 c] -> f a b c | _ -> failwith "must not happen")
 
   let map4 f a b c d =
-    zip a b +> zip c +> zip d +> map (fun (d, (c, (a, b))) -> f a b c d)
+    sequence [map choice1 a; map choice2 b; map choice3 c; map choice4 d]
+    +> map (function [`T1 a; `T2 b; `T3 c; `T4 d] -> f a b c d | _ -> failwith "must not happen")
 
   let map5 f a b c d e =
-    zip a b +> zip c +> zip d +> zip e +> map (fun (e, (d, (c, (a, b)))) -> f a b c d e)
+    sequence [map choice1 a; map choice2 b; map choice3 c; map choice4 d; map choice5 e]
+    +> map (function [`T1 a; `T2 b; `T3 c; `T4 d; `T5 e] -> f a b c d e | _ -> failwith "must not happen")
 
 end
