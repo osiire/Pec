@@ -168,7 +168,6 @@ let zip_test () =
   let cell2, sender2 = E.make () in
   let e1 = E.zip cell1 cell2 in
   let _ = E.subscribe (fun v -> seq := v :: !seq) e1 in
-  run_all ();
   sender1 1;
   sender2 2;
   sender2 3;
@@ -176,6 +175,9 @@ let zip_test () =
   sender1 5;
   sender1 6;
   run_all ();
+  (* print_string (!%"len=%d\n" (List.length !seq)); *)
+  (* print_string (String.concat ";" (List.map (fun (v1,v2) -> !%"%d,%d" v1 v2) (List.rev !seq))); *)
+  (* flush stdout; *)
   assert ( List.rev !seq = [1,2; 4,3;] )
 
 let once_test () =
@@ -196,47 +198,47 @@ let return_test () =
   run_all ();
   assert ( !seq = [2] )
 
-module QC = WQuickCheck
+(* module QC = WQuickCheck *)
 
-(* for being able to test (int -> bool) *)
-module Testable_int_to_bool =
-  QC.Testable_fun
-    (* for generating random int *)
-    (QC.Arbitrary_int)
-    (* for printing out int *)
-    (QC.PShow_int)
-    (QC.Testable_bool)
+(* (\* for being able to test (int -> bool) *\) *)
+(* module Testable_int_to_bool = *)
+(*   QC.Testable_fun *)
+(*     (\* for generating random int *\) *)
+(*     (QC.Arbitrary_int) *)
+(*     (\* for printing out int *\) *)
+(*     (QC.PShow_int) *)
+(*     (QC.Testable_bool) *)
 
-module I2B = QC.Check(Testable_int_to_bool)
+(* module I2B = QC.Check(Testable_int_to_bool) *)
 
-let monad_assoc_test () =
-  let (>>=) = E.sbind in
-  let m, sender = E.make () in
-  let e1, sender_e1 = E.make () in
-  let e2, sender_e2 = E.make () in
-  let f x = E.map (fun v -> v - x) e1 in
-  let g x = E.map (fun v -> v + x) e2 in
-  let a = (m >>= f) >>= g in
-  let b = m >>= (fun x -> (f x) >>= g) in
-  let av = ref 0 in
-  let bv = ref 0 in
-  let _ = E.subscribe (fun v -> av := v) a in
-  let _ = E.subscribe (fun v -> bv := v) b in
-  let prop_a_b_same : int -> bool =
-    fun i -> 
-      let _ =
-        match Random.int 3 with
-          | 0 -> print_string (!%"sender %d\n" i); sender i
-          | 1 -> print_string (!%"sender_e1 %d\n" i); sender_e1 i
-          | 2 -> print_string (!%"sender_e2 %d\n" i); sender_e2 i
-          | _ -> ()
-      in
-      flush stdout;
-      run_all ();
-      !av = !bv
-  in
-  (*I2B.verboseCheck { QC.quick with QC.maxTest = 100 } prop_a_b_same*)
-  I2B.check { QC.quick with QC.maxTest = 100 } prop_a_b_same
+(* let monad_assoc_test () = *)
+(*   let (>>=) = E.sbind in *)
+(*   let m, sender = E.make () in *)
+(*   let e1, sender_e1 = E.make () in *)
+(*   let e2, sender_e2 = E.make () in *)
+(*   let f x = E.map (fun v -> v - x) e1 in *)
+(*   let g x = E.map (fun v -> v + x) e2 in *)
+(*   let a = (m >>= f) >>= g in *)
+(*   let b = m >>= (fun x -> (f x) >>= g) in *)
+(*   let av = ref 0 in *)
+(*   let bv = ref 0 in *)
+(*   let _ = E.subscribe (fun v -> av := v) a in *)
+(*   let _ = E.subscribe (fun v -> bv := v) b in *)
+(*   let prop_a_b_same : int -> bool = *)
+(*     fun i ->  *)
+(*       let _ = *)
+(*         match Random.int 3 with *)
+(*           | 0 -> print_string (!%"sender %d\n" i); sender i *)
+(*           | 1 -> print_string (!%"sender_e1 %d\n" i); sender_e1 i *)
+(*           | 2 -> print_string (!%"sender_e2 %d\n" i); sender_e2 i *)
+(*           | _ -> () *)
+(*       in *)
+(*       flush stdout; *)
+(*       run_all (); *)
+(*       !av = !bv *)
+(*   in *)
+(*   (\*I2B.verboseCheck { QC.quick with QC.maxTest = 100 } prop_a_b_same*\) *)
+(*   I2B.check { QC.quick with QC.maxTest = 100 } prop_a_b_same *)
 
 let tests =
   [ 

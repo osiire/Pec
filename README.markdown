@@ -7,6 +7,6 @@ Description
 
 PEC is a push-based event combinator library for OCaml.
 
-- monadic composable events.
+- composable events.
 - supports signals which has a value of last event ocurrent.
 - no memory leaks.

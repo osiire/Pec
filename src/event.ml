@@ -48,6 +48,10 @@ let choice4 x = `T4 x
 let choice5 x = `T5 x
 
 module WQ = WQueue
+let lmap f l = List.rev (List.rev_map f l)
+let lmapi f l = 
+  let i = ref 0 in
+  lmap (fun v -> tee (fun _ -> incr i) (f !i v)) l
     
 module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
 
@@ -358,28 +362,25 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
   let filter_map f e =
     e >>= (fun x -> match f x with Some v -> _return v e | None -> never)
 
-  let zip e1 e2 =
-    let extract q1 q2 =
-      if WQ.is_empty q1 || WQ.is_empty q2 then
-        q1, q2, None
-      else
-        WQ.tail q1, WQ.tail q2, Some (WQ.head q1, WQ.head q2)
-    in
-    choose [ map choice1 e1; map choice2 e2 ]
-    +> scan (fun (q1, q2, _) v ->
-      match v with
-        | `T1 v -> 
-          extract (WQ.push q1 v) q2
-        | `T2 v -> 
-          extract q1 (WQ.push q2 v)) (WQ.empty (), WQ.empty (), None)
-    +> filter_map (fun (_, _, v) -> v)
-
   let sequence ms =
-    let mcons ms m =
-      m >>= (fun x -> ms >>= (fun y -> _return (x :: y) ms))
+    let qs = lmap (fun _ -> WQ.empty ()) ms in
+    let extract qs i v =
+      let qs =
+        lmapi (fun j q -> if j = i then WQ.push q v else q) qs
+      in
+      if List.for_all (fun q -> not (WQ.is_empty q)) qs then
+        lmap WQ.tail qs, Some (lmap WQ.head qs)
+      else
+        qs, None
     in
-    let r = List.rev ms in
-    List.fold_left mcons (map (fun x -> [x]) (List.hd r)) (List.tl r)
+    lmapi (fun i e -> map (fun v -> (i, v)) e) ms
+    +> choose
+    +> scan (fun (qs, _) (i, v) -> extract qs i v) (qs, None)
+    +> filter_map snd
+
+  let zip e1 e2 =
+    sequence [map choice1 e1; map choice2 e2]
+    +> map (function [`T1 v1; `T2 v2] -> v1, v2 | _ -> failwith "must not happen")
 
   let take_while cond e =
     let flag = ref true in
