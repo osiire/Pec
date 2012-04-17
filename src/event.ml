@@ -344,10 +344,6 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
 
   (* utitly functions *)
 
-  let scan f i e =
-    let s = ref i in
-    map (fun x -> tee (fun n -> s := n) (f !s x)) e
-
   let return x =
     let e, sender = make () in
     sender x;
@@ -355,6 +351,16 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
 
   let _return x e =
     map (fun _ -> x) e
+
+  let scan f i e =
+    let s = ref i in
+    let ee, sender = make () in
+    switch ee
+    +> tee (fun _ -> 
+      let ie, isender = make () in
+      sender ie;
+      isender i;
+      sender (map (fun x -> tee (fun n -> s := n) (f !s x)) e))
 
   let filter cond e =
     e >>= (fun x -> if cond x then e else never)

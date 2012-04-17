@@ -70,7 +70,7 @@ let scan_test () =
   sender1 3;
   sender1 4;
   run_all ();
-  assert ( List.rev !seq = [1;3;6;10])
+  assert ( List.rev !seq = [0;1;3;6;10])
 
 let filter_test () =
   let seq = ref [] in
