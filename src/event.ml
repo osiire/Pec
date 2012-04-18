@@ -364,6 +364,10 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
       isender i;
       sender (map (fun x -> tee (fun n -> s := n) (f !s x)) e))
 
+  let fold f i e =
+    let s = ref i in
+    map (fun x -> tee (fun n -> s := n) (f !s x)) e
+
   let filter cond e =
     e >>= (fun x -> if cond x then e else never)
 

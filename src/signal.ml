@@ -100,10 +100,10 @@ module Make ( E : EventSig.S ) = struct
     _make_signal (f (read a) (read b) (read c) (read d) (read e)) (E.map5 f a.event b.event c.event d.event e.event)
 
   let fold f init e =
-    _make_signal init (E.scan f init e)
+    _make_signal init (E.fold f init e)
 
   let reduce x e =
-    _make_signal x (E.scan (fun v f -> f v) x e)
+    _make_signal x (E.fold (fun v f -> f v) x e)
 
   let zip a b =
     _make_signal ((read a), (read b)) (E.zip a.event b.event)

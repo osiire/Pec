@@ -63,17 +63,19 @@ let choose_test () =
 (*   run_all (); *)
 (*   assert ( List.rev !seq = [9;3;10;11]) *)
 
-(* let scan_test () = *)
-(*   let seq = ref [] in *)
-(*   let cell1, sender1 = E.make () in *)
-(*   let e = E.scan (fun s x -> s + x) 0 cell1 in *)
-(*   E.subscribe (fun v -> seq := v :: !seq) e; *)
-(*   sender1 1; *)
-(*   sender1 2; *)
-(*   sender1 3; *)
-(*   sender1 4; *)
-(*   run_all (); *)
-(*   assert ( List.rev !seq = [1;3;6;10]) *)
+let fold_test () =
+  let e, sender = E.make () in
+  let s = S.fold (+) 0 e in
+  assert (S.read s = 0);
+  sender 1;
+  E.run_all ();
+  assert (S.read s = 1);
+  sender 2;
+  E.run_all ();
+  assert (S.read s = 3);
+  sender 3;
+  E.run_all ();
+  assert (S.read s = 6)
 
 (* let filter_test () = *)
 (*   let seq = ref [] in *)
@@ -197,7 +199,7 @@ let tests =
     (* "choose test", choose_test; *)
     (* "never test", never_test; *)
     (* "join test", join_test; *)
-    (* "scan test", scan_test; *)
+    "fold test", fold_test;
     (* "filter test", filter_test; *)
     (* "map2 test", map2_test; *)
     (* "jmap2 test", jmap2_test; *)

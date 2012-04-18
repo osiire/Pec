@@ -47,6 +47,7 @@ module type S = sig
   (** [sbind e f] is [switch (map f e)] *)
   val sbind : 'a t -> ('a -> 'b t) -> 'b t
   val scan : ('a -> 'b -> 'a) -> 'a -> 'b t -> 'a t
+  val fold : ('a -> 'b -> 'a) -> 'a -> 'b t -> 'a t
   val filter : ('a -> bool) -> 'a t -> 'a t
   val filter_map : ('a -> 'b option) -> 'a t -> 'b t
   val zip : 'a t -> 'b t -> ('a * 'b) t
