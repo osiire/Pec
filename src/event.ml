@@ -52,6 +52,8 @@ let lmap f l = List.rev (List.rev_map f l)
 let lmapi f l = 
   let i = ref 0 in
   lmap (fun v -> tee (fun _ -> incr i) (f !i v)) l
+let lappend a b =
+  List.rev_append (List.rev a) b
     
 module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
 
@@ -171,7 +173,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
         `Val _ -> ()
       | `Err _ -> 
         debug (!%"set_notify! %d\n" cell.id);
-        cell.notify <- (id, notify) :: cell.notify
+        cell.notify <- lappend cell.notify [(id, notify)]
 
   let rec set_notify : 'a. (subscribe_id * (cell_id -> time -> unit)) -> 'a event -> unit = 
     fun notify -> function
