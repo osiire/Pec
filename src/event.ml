@@ -66,10 +66,15 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
     value : 'a option;
   }
 
+  type notify = {
+    subscribe_id : subscribe_id;
+    follow : cell_id -> time -> unit;
+  }
+
   type 'a mcell = {
     id : cell_id;
     mutable data : 'a option;
-    mutable notify : (subscribe_id * (cell_id -> time -> unit)) list;
+    mutable notify : notify list;
   }
       
   and ('a, 'b) mwrap = {
@@ -95,6 +100,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
     | Choose : 'a choose -> 'a event
     | Never : 'a event
     | Switch : 'a mswitch -> 'a event
+    | Return : 'a -> 'a event
 
   type 'a t = 'a event
 
@@ -133,7 +139,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
           let ns = cell.notify in
           cell.notify <- []; (* notify関数が再度cell.notifyをセットするはず。
                                 これによりnotify関数を削除する手間を省く。*)
-          List.iter (fun (_, notify) -> notify cell.id time) ns) I.queue)
+          List.iter (fun notify -> notify.follow cell.id time) ns) I.queue)
 
   let map f e = Wrap {
     event = e;
@@ -155,7 +161,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
     end
       
   let choose es = Choose {
-  (*choose = scramble es;*)
+    (*choose = scramble es;*)
     choose = es;
     c_latest = None;
   }
@@ -168,14 +174,16 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
     s_latest = None
   }
 
-  let set_notify_to_cell cell (id, notify) =
-    match maybe (List.find (fun (id', _) -> id' = id)) cell.notify with
-        `Val _ -> ()
+  let set_notify_to_cell cell notify =
+    match maybe (List.find (fun n -> n.subscribe_id = notify.subscribe_id)) cell.notify with
+      | `Val _ -> 
+          (* 既に同じnotifyが設定されているので重複登録しない.*)
+          ()
       | `Err _ -> 
         debug (!%"set_notify! %d\n" cell.id);
-        cell.notify <- lappend cell.notify [(id, notify)]
+        cell.notify <- lappend cell.notify [notify]
 
-  let rec set_notify : 'a. (subscribe_id * (cell_id -> time -> unit)) -> 'a event -> unit = 
+  let rec set_notify : 'a. notify -> 'a event -> unit = 
     fun notify -> function
       | Cell cell ->
         set_notify_to_cell cell notify
@@ -188,8 +196,8 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
         List.iter (set_notify notify) s.inner
       | _ -> ()
 
-  let remove_cell_notify cell id =
-    cell.notify <- List.filter (fun (id', _) -> id' <> id) cell.notify
+  let remove_cell_notify cell subscribe_id =
+    cell.notify <- List.filter (fun n -> n.subscribe_id <> subscribe_id) cell.notify
 
   let rec remove_notify : 'a. subscribe_id -> 'a event -> unit = 
     fun id -> function
@@ -204,7 +212,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
         List.iter (remove_notify id) s.inner
       | _ -> ()
 
-  let rec set_notify_with_id : 'a. cell_id -> (subscribe_id * (cell_id -> time -> unit)) -> 'a event -> bool = 
+  let rec set_notify_with_id : 'a. cell_id -> notify -> 'a event -> bool = 
     fun id notify -> function
       | Cell cell ->
         if cell.id = id then begin
@@ -251,7 +259,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
     fun () -> ignore (set_notify_with_id id notify e)
 
 
-  let rec read : 'a. cell_id -> (subscribe_id * (cell_id -> time -> unit)) -> time -> 'a event -> 'a option = 
+  let rec read : 'a. cell_id -> notify -> time -> 'a event -> 'a option = 
     fun id notify time -> function
       | Cell cell ->
         if cell.id = id then begin
@@ -260,7 +268,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
           set_notify_to_cell cell notify;
           cell.data
         end else begin
-          debug (!%"id is deiff cell.id %d <> %d\n" cell.id id);
+          debug (!%"id is diff cell.id %d <> %d\n" cell.id id);
           None
         end
       | Wrap w ->
@@ -275,7 +283,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
       | Choose c as e ->
         let choose_read () =
           let rec find_value = function
-          [] -> None
+            | [] -> None
             | hd :: tl ->
               debug (!%"choose %d\n" id);
               read id notify time hd
@@ -303,32 +311,36 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
             | Some inner ->
               debug "inner\n";
               s.inner <- [inner]; (* innerは一つに限定する. switchの定義. *)
-              if inner <> Never then begin
-                ignore (set_notify notify inner);
-                read id notify time inner
-                +> tee (function 
-                  | None -> debug "read switch inner returns none\n"
-                  | Some _ ->  debug "switch same time inner is Some\n")
-              end else
-                None
+              match inner with
+                | Never -> None
+                | Return c ->
+                  Some c
+                | _ ->  begin
+                  ignore (set_notify notify inner);
+                  read id notify time inner
+                  +> tee (function 
+                    | None -> debug "read switch inner returns none\n"
+                    | Some _ ->  debug "switch same time inner is Some\n")
+                end
         in
         with_latest s.s_latest (fun l -> s.s_latest <- l) time 
           switch_read 
           (set_notify_only id notify e)
       | Never -> None
+      | Return _ -> None
 
   let subscribe f e =
     let subscribe_id = 
       get_id () 
     in
-    let rec notify cell_id time =
+    let rec follow cell_id time =
       (*debug (!%"raise %d\n" id);*)
-      (match read cell_id (subscribe_id, notify) time e with
+      (match read cell_id { subscribe_id; follow } time e with
           None -> ()
         | Some v -> f v);
       (*debug "one notify end\n";*)
     in
-    ignore (set_notify (subscribe_id, notify) e);
+    ignore (set_notify { subscribe_id; follow } e);
     subscribe_id
     (*debug "subscribe end\n"*)
 
@@ -347,12 +359,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
   (* utitly functions *)
 
   let return x =
-    let e, sender = make () in
-    sender x;
-    e
-
-  let _return x e =
-    map (fun _ -> x) e
+    Return x
 
   let scan f i e =
     let s = ref i in
@@ -372,7 +379,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
     e >>= (fun x -> if cond x then e else never)
 
   let filter_map f e =
-    e >>= (fun x -> match f x with Some v -> _return v e | None -> never)
+    e >>= (fun x -> match f x with Some v -> return v | None -> never)
 
   let sequence ms =
     let qs = lmap (fun _ -> WQ.empty ()) ms in
@@ -443,7 +450,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
       if Queue.length q < n then
         never
       else
-        _return (Queue.pop q) e)
+        return (Queue.pop q))
 
   let pairwise e =
     zip e (delay 1 e)

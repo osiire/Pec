@@ -1,5 +1,6 @@
 
 module E = Pec.Event.Make (Pec.EventQueue.DefaultQueueM) (Pec.EventQueue.DefaultQueueI)
+open E.OP
 
 let run_all () =
   while E.run () > 0 do () done
@@ -193,10 +194,13 @@ let once_test () =
 
 let return_test () =
   let seq = ref [] in
-  let e = E.return 2 in
-  let _ =  E.subscribe (fun v -> seq := v :: !seq) e in
+  let e, sender = E.make () in
+  let e' =  e >>= (fun _ -> E.return 3) in
+  let _ =  E.subscribe (fun v -> seq := v :: !seq) e' in
+  sender 1;
+  sender 2;
   run_all ();
-  assert ( !seq = [2] )
+  assert ( !seq = [3;3] )
 
 (* module QC = WQuickCheck *)
 
