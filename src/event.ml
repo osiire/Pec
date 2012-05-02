@@ -54,6 +54,11 @@ let lmapi f l =
   lmap (fun v -> tee (fun _ -> incr i) (f !i v)) l
 let lappend a b =
   List.rev_append (List.rev a) b
+
+module Option = struct
+  let map f m = match m with None -> None | Some v -> Some (f v)
+  let iter f m = match m with None -> () | Some v -> f v
+end
     
 module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
 
@@ -69,6 +74,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
   type notify = {
     subscribe_id : subscribe_id;
     follow : cell_id -> time -> unit;
+    switch_level : int;
   }
 
   type 'a mcell = {
@@ -104,6 +110,50 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
 
   type 'a t = 'a event
 
+  module Notify = struct
+    let make id follow =
+      {
+        subscribe_id = id;
+        follow = follow;
+        switch_level = 0; 
+        (* 
+         * switch_levelは、このnotifyerがswitchを何段挟んだnotifyerかを示す数字
+         * この段数が浅いものから順に呼び出される.
+         *)
+      }
+
+    let incr_switch_level n =
+      { n with switch_level = n.switch_level + 1 }
+
+  end
+
+  module Cell = struct
+    let set_data cell x =
+      cell.data <- Some x
+      
+    let append_notify cell notify =
+      match maybe (List.find (fun n -> n.subscribe_id = notify.subscribe_id)) cell.notify with
+        | `Val _ -> 
+          (* 既に同じnotifyが設定されているので重複登録しない.*)
+          false
+        | `Err _ -> 
+          debug (!%"set_notify! %d\n" cell.id);
+          cell.notify <- lappend cell.notify [notify];
+          true
+
+    let remove_notify cell subscribe_id =
+      cell.notify <- List.filter (fun n -> n.subscribe_id <> subscribe_id) cell.notify
+
+    let call_notify cell time =
+      let ns = cell.notify in
+      cell.notify <- []; (* notify.follow関数が再度cell.notifyをセットするはず。
+                            これによりnotify関数を削除する手間を省く。*)
+      (* switch_levelが浅いものから順に呼び出す. これでswitchのアップデート順番を確保する. *)
+      List.sort (fun n1 n2 -> compare n1.switch_level n2.switch_level) ns
+      +> List.iter (fun notify -> notify.follow cell.id time)
+        
+  end
+
   let get_id =
     let counter = ref 0 in
     fun () -> tee (fun _ -> incr counter) !counter
@@ -135,11 +185,8 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
       M.push
         (fun () -> 
           let time = get_time () in
-          cell.data <- Some x;
-          let ns = cell.notify in
-          cell.notify <- []; (* notify関数が再度cell.notifyをセットするはず。
-                                これによりnotify関数を削除する手間を省く。*)
-          List.iter (fun notify -> notify.follow cell.id time) ns) I.queue)
+          Cell.set_data cell x;
+          Cell.call_notify cell time) I.queue)
 
   let map f e = Wrap {
     event = e;
@@ -174,98 +221,83 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
     s_latest = None
   }
 
-  let set_notify_to_cell cell notify =
-    match maybe (List.find (fun n -> n.subscribe_id = notify.subscribe_id)) cell.notify with
-      | `Val _ -> 
-          (* 既に同じnotifyが設定されているので重複登録しない.*)
-          ()
-      | `Err _ -> 
-        debug (!%"set_notify! %d\n" cell.id);
-        cell.notify <- lappend cell.notify [notify]
-
-  let rec set_notify : 'a. notify -> 'a event -> unit = 
+  let rec set_notify : 'a. notify -> 'a event -> bool = 
     fun notify -> function
       | Cell cell ->
-        set_notify_to_cell cell notify
+        Cell.append_notify cell notify
       | Wrap w ->
         set_notify notify w.event
       | Choose c ->
-        List.iter (set_notify notify) c.choose
+        List.fold_left (fun b e -> set_notify notify e || b) false c.choose
       | Switch s ->
-        set_notify notify s.outer;
-        List.iter (set_notify notify) s.inner
-      | _ -> ()
-
-  let remove_cell_notify cell subscribe_id =
-    cell.notify <- List.filter (fun n -> n.subscribe_id <> subscribe_id) cell.notify
+        let outer_b = 
+          set_notify notify s.outer 
+        in
+        let notify' =
+          Notify.incr_switch_level notify
+        in
+        List.fold_left (fun b e -> set_notify notify' e || b) outer_b s.inner
+      | _ -> 
+        false
 
   let rec remove_notify : 'a. subscribe_id -> 'a event -> unit = 
-    fun id -> function
+    fun subscribe_id -> function
       | Cell cell ->
-        remove_cell_notify cell id
+        Cell.remove_notify cell subscribe_id
       | Wrap w ->
-        remove_notify id w.event
+        remove_notify subscribe_id w.event
       | Choose c ->
-        List.iter (remove_notify id) c.choose
+        List.iter (remove_notify subscribe_id) c.choose
       | Switch s ->
-        remove_notify id s.outer;
-        List.iter (remove_notify id) s.inner
+        remove_notify subscribe_id s.outer;
+        List.iter (remove_notify subscribe_id) s.inner
       | _ -> ()
 
   let rec set_notify_with_id : 'a. cell_id -> notify -> 'a event -> bool = 
     fun id notify -> function
       | Cell cell ->
-        if cell.id = id then begin
-          set_notify_to_cell cell notify;
-          true
-        end else
+        if cell.id = id then
+          set_notify notify (Cell cell)
+        else
           false
       | Wrap w ->
         set_notify_with_id id notify w.event
       | Choose c ->
-        let rec set_notify_one = function
-          | [] -> false
-          | hd :: tl ->
-            if set_notify_with_id id notify hd then
-              true
-            else
-              set_notify_one tl
-        in
-        set_notify_one c.choose
+        List.fold_left (fun b e -> b || set_notify_with_id id notify e) false c.choose
       | Switch s ->
         if set_notify_with_id id notify s.outer then
           true
         else
-          List.fold_left (fun flag inner -> set_notify_with_id id notify inner || flag) false s.inner
+          List.fold_left (fun b inner -> b || set_notify_with_id id notify inner) false s.inner
       | _ ->
         false
 
-  let with_latest latest setter time reader set_notify =
+  (* let with_latest latest setter time reader set_notify =*)
+  let with_latest latest setter time reader =
     let get_sametime_cache latest time =
       match latest with
         | Some l when l.time = time -> l.value
         | _ -> None
     in
     match get_sametime_cache latest time with
-        None ->
+      | None ->
           (* 同じ時刻の呼び出しはキャッシュとして返せるようにしておく *)
           tee (fun v -> setter (Some { time = time; value = v })) (reader ())
       | v -> 
         (* ??? *)
-        set_notify ();
+        (*set_notify (); *)
         v
 
   let set_notify_only id notify e =
     fun () -> ignore (set_notify_with_id id notify e)
 
-
-  let rec read : 'a. cell_id -> notify -> time -> 'a event -> 'a option = 
-    fun id notify time -> function
+  let rec read : 'a. cell_id -> notify -> time -> bool -> 'a event -> 'a option = 
+    fun id notify time in_switch -> function
       | Cell cell ->
         if cell.id = id then begin
           debug (!%"find id=%d\n" id);
           (* 次回も呼び出してもらえるようにnotifyを代入しておく *)
-          set_notify_to_cell cell notify;
+          (*ignore (set_notify notify (Cell cell));*)
           cell.data
         end else begin
           debug (!%"id is diff cell.id %d <> %d\n" cell.id id);
@@ -274,58 +306,45 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
       | Wrap w ->
         debug "map\n";
         let wrap_read () =
-          read id notify time w.event
-          +> may_map (lazy None) (fun v -> Some (w.wrap v))
+          read id notify time in_switch w.event
+          +> Option.map w.wrap
         in
-        with_latest w.w_latest (fun l -> w.w_latest <- l) time 
-          wrap_read 
-          (set_notify_only id notify w.event)
-      | Choose c as e ->
+        with_latest w.w_latest (fun l -> w.w_latest <- l) time wrap_read 
+      | Choose c ->
         let choose_read () =
           let rec find_value = function
             | [] -> None
-            | hd :: tl ->
+            | hd :: tl -> begin
               debug (!%"choose %d\n" id);
-              read id notify time hd
-              +> may_map (lazy (find_value tl)) (fun v -> Some v)
+              match read id notify time in_switch hd  with
+                | None -> find_value tl
+                | v -> v
+            end
           in
           (* 最初に見つけたidにマッチするイベントの値を見つけてくる *)
           find_value c.choose
         in
-        with_latest c.c_latest (fun l -> c.c_latest <- l) time 
-          choose_read 
-          (set_notify_only id notify e)
-      | Switch s as e ->
+        with_latest c.c_latest (fun l -> c.c_latest <- l) time choose_read 
+      | Switch s ->
         debug "switch";
-        let rec read_one_of = function
-          | [] -> None
-          | [hd] -> (* s.innerリストへは単一要素のしか入っていないはず. *)
-            read id notify time hd
-          | _ -> failwith "must not happen"
-        in
         let switch_read () =
-          match read id notify time s.outer with
-            | None ->
-              debug "try to find inner\n";
-              read_one_of s.inner
-            | Some inner ->
-              debug "inner\n";
-              s.inner <- [inner]; (* innerは一つに限定する. switchの定義. *)
-              match inner with
-                | Never -> None
-                | Return c ->
-                  Some c
-                | _ ->  begin
-                  ignore (set_notify notify inner);
-                  read id notify time inner
-                  +> tee (function 
-                    | None -> debug "read switch inner returns none\n"
-                    | Some _ ->  debug "switch same time inner is Some\n")
-                end
+          debug "try to find inner\n";
+          read id notify time in_switch s.outer
+          +> Option.iter (fun inner ->
+            debug "get inner\n";
+            s.inner <- [inner]);  (* innerは一つに限定する. switchの定義. *)
+          match s.inner with
+            | [inner] -> (* s.innerリストへは単一要素のしか入っていないはず. *)
+              let notify' =
+                Notify.incr_switch_level notify
+              in
+              ignore (set_notify notify' inner);
+              read id notify' time true inner
+            | _ -> 
+              None
         in
-        with_latest s.s_latest (fun l -> s.s_latest <- l) time 
-          switch_read 
-          (set_notify_only id notify e)
+        with_latest s.s_latest (fun l -> s.s_latest <- l) time switch_read 
+      | Return c when in_switch -> Some c
       | Never -> None
       | Return _ -> None
 
@@ -335,12 +354,15 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
     in
     let rec follow cell_id time =
       (*debug (!%"raise %d\n" id);*)
-      (match read cell_id { subscribe_id; follow } time e with
-          None -> ()
-        | Some v -> f v);
+      let notify =
+        Notify.make subscribe_id follow
+      in
+      read cell_id notify time false e
+      +> Option.iter f;
+      ignore (set_notify notify e);
       (*debug "one notify end\n";*)
     in
-    ignore (set_notify { subscribe_id; follow } e);
+    ignore (set_notify (Notify.make subscribe_id follow) e);
     subscribe_id
     (*debug "subscribe end\n"*)
 

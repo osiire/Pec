@@ -123,6 +123,10 @@ let smap2_test () =
   sender3 5;
   sender3 6;
   run_all ();
+  (* print_string (String.concat "," (List.map string_of_int (List.rev !seq1))); *)
+  (* print_newline(); *)
+  (* print_string (String.concat "," (List.map string_of_int (List.rev !seq2))); *)
+  (* print_newline(); *)
   assert ( List.rev !seq1 = [2;3;4;6;7]);
   assert ( List.rev !seq2 = [3;4;5;7;8])
 

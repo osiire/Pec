@@ -65,8 +65,13 @@ let calculator = parser_signal calculator_parser 0
 
 let _ =
   b1_push ();
+  E.run_all ();
+  assert (S.read calculator = 0);
   b0_push ();
+  E.run_all ();
   minus_push ();
+  E.run_all ();
+  assert (S.read calculator = 0);
   b3_push ();
   enter_push ();
   E.run_all ();
