@@ -29,9 +29,7 @@ end
 module type M = sig
   type q
   type elem = unit -> unit
-  val create : unit -> q
   val push : elem -> q -> unit
-  val pop : q -> elem
   val take : q -> elem
   val length : q -> int
 end
