@@ -305,8 +305,8 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
   let set_notify_only id notify e =
     fun () -> ignore (set_notify_with_id id notify e)
 
-  let rec read : 'a. cell_id -> notify -> time -> bool -> 'a event -> 'a option = 
-    fun id notify time in_switch -> function
+  let rec read : 'a. cell_id -> notify -> time -> 'a event -> 'a option = 
+    fun id notify time -> function
       | Cell cell ->
         if cell.id = id then begin
           debug (!%"find id=%d\n" id);
@@ -320,7 +320,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
       | Wrap w ->
         debug "map\n";
         let wrap_read () =
-          read id notify time in_switch w.event
+          read id notify time w.event
           +> Option.map w.wrap
         in
         with_latest w.w_latest (fun l -> w.w_latest <- l) time wrap_read 
@@ -330,7 +330,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
             | [] -> None
             | hd :: tl -> begin
               debug (!%"choose %d\n" id);
-              match read id notify time in_switch hd  with
+              match read id notify time hd  with
                 | None -> find_value tl
                 | v -> v
             end
@@ -343,7 +343,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
         debug "switch\n";
         let switch_read () =
           debug "try to find inner\n";
-          read id notify time in_switch s.outer
+          read id notify time s.outer
           +> Option.iter (fun inner ->
             debug "get inner\n";
             s.inner <- [inner]);  (* innerは一つに限定する. switchの定義. *)
@@ -353,7 +353,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
                 Notify.incr_switch_level notify
               in
               ignore (set_notify notify' inner);
-              read id notify' time true inner
+              read id notify' time inner
             | _ -> 
               None
         in
@@ -374,9 +374,9 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
       let notify =
         Notify.make subscribe_id follow
       in
-      read cell_id notify time false e
+      read cell_id notify time e
       +> Option.iter f;
-      ignore (set_notify notify e);
+      ignore (set_notify notify e); (* !! 過剰な設定? *)
       (*debug "one notify end\n";*)
     in
     ignore (set_notify (Notify.make subscribe_id follow) e);
@@ -397,7 +397,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
 
   (* utitly functions *)
 
-  let return x =
+  let immediate x =
     Return { used = false; return = x }
 
   let scan f i e =
@@ -418,7 +418,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
     e >>= (fun x -> if cond x then e else never)
 
   let filter_map f e =
-    e >>= (fun x -> match f x with Some v -> return v | None -> never)
+    e >>= (fun x -> match f x with Some v -> immediate v | None -> never)
 
   let sequence ms =
     let qs = lmap (fun _ -> WQ.empty ()) ms in
@@ -489,7 +489,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
       if Queue.length q < n then
         never
       else
-        return (Queue.pop q))
+        immediate (Queue.pop q))
 
   let pairwise e =
     zip e (delay 1 e)

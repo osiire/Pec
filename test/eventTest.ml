@@ -196,10 +196,10 @@ let once_test () =
   run_all ();
   assert ( !seq = [1] )
 
-let return_test () =
+let immediate_test () =
   let seq = ref [] in
   let e, sender = E.make () in
-  let e' =  e >>= (fun _ -> E.return 3) in
+  let e' =  e >>= (fun _ -> E.immediate 3) in
   let _ =  E.subscribe (fun v -> seq := v :: !seq) e' in
   sender 1;
   sender 2;
@@ -263,7 +263,7 @@ let tests =
     "diamond test", diamond_test;
     "zip test", zip_test;
     "once test", once_test;
-    "return test", return_test;
+    "immediate test", immediate_test;
   ]
 
 let (!%) = Printf.sprintf

@@ -27,7 +27,7 @@ module type S = sig
       
   (** [make ()] makes a new event and sender function.*)
   val make : unit -> 'a t * ('a -> unit)
-  val return : 'a -> 'a t
+  val immediate : 'a -> 'a t
 
   val map : ('a -> 'b) -> 'a t -> 'b t
   val map2 : ('a -> 'b -> 'c) -> 'a t -> 'b t -> 'c t
