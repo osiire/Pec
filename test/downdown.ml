@@ -25,6 +25,7 @@ let rec forever f x =
 let spawn_loop f x =
   ignore (Thread.create (fun () -> forever f x) ())
 
+(* PECに食わせる同期的キューの実装を標準ライブラリのQueueとEventで実装 *)
 module SyncQueueI = struct
   type elem = unit -> unit
   type q = {
@@ -67,6 +68,7 @@ module SyncQueueM = struct
 
 end
 
+(* 同期的キューを使ったPECのインスタンス化 *)
 module E = Pec.Event.Make (SyncQueueM) (SyncQueueI)
 module S = Pec.Signal.Make (E)
 open S.OP
@@ -83,7 +85,8 @@ let _repeat x n =
 
 let _remove_last l =
   List.rev (List.tl (List.rev l))
-    
+
+(* ゲーム定数 *)    
 let ystep = 20
 let xmax = 32
 let space = 5
@@ -91,10 +94,12 @@ let wait = 0.15
   
 exception End
   
+
+(* ゲームシーンを区別するモード *)
 module Mode = struct
   type mode =
-      Playing
-    | GameOver
+      Playing   (* プレイ中 *)
+    | GameOver  (* ゲームーオーバー *)
 
   type t = mode S.t
 
@@ -106,16 +111,18 @@ module Mode = struct
 
 end
 
+(* 得点 *)
 module Score = struct
   type t = int S.t
       
   let make tick restart =
+    (* ティック毎に得点アップ. リスタートでゼロリセット *)
     E.choose [_map `Tick tick; _map `Restart restart]
     +> S.fold (fun s e -> 
       match e with
         | `Tick -> s + 1
         | `Restart -> 0) 0 
-      
+
   let draw color score =
     G.set_color color;
     G.moveto 300 350;
@@ -123,15 +130,20 @@ module Score = struct
       
 end
 
+(* =で作られた壁 *)
 module Wall = struct
-
+  
+  (* 中央の穴の左側のX座標をleftとする *)
   type left = int
+
+  (* 先頭は最下部に対応するleft *)
   type t = left list S.t
 
   let wall_y = 1
   let wall_height = 12
   let init_left =
     xmax / 2 - 1
+
   let wall_right left = 
     left + space + 1
 
@@ -139,6 +151,7 @@ module Wall = struct
     let init =
       _repeat init_left wall_height
     in
+    (* 次の壁の状態を作り出す関数 *)
     let next wall =
       let new_left wall =
         let w1, w2 =
@@ -167,6 +180,7 @@ module Wall = struct
       in
       (new_left wall) :: (_remove_last wall)
     in
+    (* tick毎に壁を後進する. リスタートすれば初期状態に *)
     E.choose [_map `Tick tick; _map `Restart restart]
     +> S.fold (fun s e -> 
       match e with
@@ -201,6 +215,7 @@ module Arrow = struct
   let init_pos =
     xmax / 2 + space / 2
 
+  (* ユーザが動かす先頭の矢印の位置 *)
   type t = int list S.t
 
   let head t =
@@ -223,10 +238,12 @@ module Arrow = struct
         | `Restart -> 
           initial
         | `Tick ->
+          (* tick毎に最後尾を削り、現在の位置を追加する. *)
           (List.hd arrow) :: (_remove_last arrow)
         | _ ->
           match arrow with
             | pos :: tl ->
+              (* 先頭の矢印を動かす *)
               (if dir = `Left then pos - 1 else pos + 1) :: tl
             | _ ->
               arrow
@@ -250,7 +267,8 @@ module Arrow = struct
     List.iteri (draw_v color) (S.read t)
       
 end
-    
+
+(* 全体の状態. 個々のtがシグナル. *)
 type env = {
   mode : Mode.t;
   wall : Wall.t;
@@ -279,7 +297,9 @@ module Drawer = struct
       
 end
 
+(* ゲームオーバーかどうかを判定する関数 *)
 let judge judge_tick restart env =
+  (* 矢印が壁の中に入ってしまっていたらアウト *)
   let arrow_in_wall arrow wall =
     let pos =
       Arrow.head arrow
@@ -352,9 +372,10 @@ let make_tick_event () =
   in
   spawn_loop (fun () ->
     Thread.delay wait;
-    tick_send `Phase1;
-    tick_send `Phase2;
-    tick_send `Phase3) ();
+    tick_send `Phase1;  (* 状態の更新 *)
+    tick_send `Phase2;  (* ゲームオーバー判定 *)
+    tick_send `Phase3   (* 描画フェーズ *)
+  ) ();
   tick_event
     
 let main () =
