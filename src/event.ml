@@ -59,7 +59,7 @@ module Option = struct
   let map f m = match m with None -> None | Some v -> Some (f v)
   let iter f m = match m with None -> () | Some v -> f v
 end
-    
+
 module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
 
   type cell_id = int
@@ -100,15 +100,26 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
     mutable s_latest : 'a latest option;
   }
 
+  and 'a mreturn = {
+    mutable used : bool; (* returnは1サイクルしか使えない *)
+    return : 'a;
+  }
+
   and 'a event =
     | Cell : 'a mcell -> 'a event
     | Wrap : ('a, 'b) mwrap -> 'b event
     | Choose : 'a choose -> 'a event
     | Never : 'a event
     | Switch : 'a mswitch -> 'a event
-    | Return : 'a -> 'a event
+    | Return : 'a mreturn -> 'a event
 
   type 'a t = 'a event
+
+  (* 
+   * returnは1サイクルしか使えない.
+   * 1サイクル中に使ったreturnにusedフラグを立てるクロージャーを格納するキュー.
+   *)
+  let used_return = Queue.create ();
 
   module Notify = struct
     let make id follow =
@@ -165,7 +176,10 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
   let run () =
     let _ =
       match maybe M.take I.queue with
-        | `Val e -> e ()
+        | `Val e -> 
+          e ();
+          Queue.iter (fun f -> f()) used_return;
+          Queue.clear used_return;
         | _ -> ()
     in
     M.length I.queue
@@ -326,7 +340,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
         in
         with_latest c.c_latest (fun l -> c.c_latest <- l) time choose_read 
       | Switch s ->
-        debug "switch";
+        debug "switch\n";
         let switch_read () =
           debug "try to find inner\n";
           read id notify time in_switch s.outer
@@ -344,9 +358,12 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
               None
         in
         with_latest s.s_latest (fun l -> s.s_latest <- l) time switch_read 
-      | Return c when in_switch -> Some c
-      | Never -> None
+      | Return x when not x.used -> 
+        Queue.add (fun () -> x.used <- true) used_return;
+        Some x.return
       | Return _ -> None
+      | Never -> None
+
 
   let subscribe f e =
     let subscribe_id = 
@@ -381,7 +398,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
   (* utitly functions *)
 
   let return x =
-    Return x
+    Return { used = false; return = x }
 
   let scan f i e =
     let s = ref i in

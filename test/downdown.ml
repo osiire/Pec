@@ -12,6 +12,12 @@ let (+>) f g = g f
 let (!%) = Printf.sprintf
 let tee f x = ignore (f x); x
 let debug s = print_string s;print_newline();flush Pervasives.stdout
+let range _from _to _step =
+  let rec loop s i =
+    if i >= _to then List.rev s
+    else loop (i :: s) (i + _step)
+  in
+  loop [] _from
 
 let rec forever f x = 
   let v = f x in forever f v
@@ -64,9 +70,19 @@ end
 module E = Pec.Event.Make (SyncQueueM) (SyncQueueI)
 module S = Pec.Signal.Make (E)
 open S.OP
-
+    
 let _map x e =
   E.map (fun _ -> x) e
+
+let _filter x e =
+  E.filter (fun y -> y = x) e
+
+let _repeat x n =
+  range 0 n 1
+  +> List.map (fun _ -> x)
+
+let _remove_last l =
+  List.rev (List.tl (List.rev l))
     
 let ystep = 20
 let xmax = 32
@@ -107,86 +123,76 @@ module Score = struct
       
 end
 
-(* module Wall = struct *)
-  
-(*   let wall_y = 1 *)
-(*   let wall_height = 12 *)
-    
-(*   type wall_left = int *)
-(*   type t = wall_left list R.t * (wall_left -> unit) *)
+module Wall = struct
+
+  type left = int
+  type t = left list S.t
+
+  let wall_y = 1
+  let wall_height = 12
+  let init_left =
+    xmax / 2 - 1
+  let wall_right left = 
+    left + space + 1
+
+  let make tick restart =
+    let init =
+      _repeat init_left wall_height
+    in
+    let next wall =
+      let new_left wall =
+        let w1, w2 =
+          match wall with
+	            h1 :: h2 :: _ -> h1, h2
+            | _ -> assert false
+        in
+        let prob =
+          if (wall_right w1) = xmax then
+	          0
+          else if w1 = 1 then
+	          100
+          else if (wall_right w1) > (xmax - xmax / 6) then
+	          30
+          else if w1 < (xmax / 6) then
+	          70
+          else if (w1 - w2) = 1 then
+	          80
+          else
+	          20
+        in
+        if (Random.int 100) < prob then
+          w1 + 1
+        else
+          w1 - 1
+      in
+      (new_left wall) :: (_remove_last wall)
+    in
+    E.choose [_map `Tick tick; _map `Restart restart]
+    +> S.fold (fun s e -> 
+      match e with
+        | `Tick -> next s
+        | `Restart -> init) init
+
+  let draw color wall =
+    let draw_wall_line color i left =
+      let y =
+        (wall_y + i) * ystep
+      in
+      G.set_color color;
+      G.moveto 0 y;
+      for i = 1 to left do
+        G.draw_char '='
+      done;
+      for i = 1 to space do
+        G.draw_char ' '
+      done;
+      for i = 1 to xmax - (wall_right left) + 1 do
+        G.draw_char '='
+      done
+    in
+    List.iteri (draw_wall_line color) (S.read wall)
       
-(*   let init_left = *)
-(*     xmax / 2 - 1 *)
-      
-(*   let init (_, sender) = *)
-(*     for i = 0 to wall_height - 1 do *)
-(*       sender init_left *)
-(*     done *)
-      
-(*   let wall = *)
-(*     let r, sender =  *)
-(*       R.make init_left *)
-(*     in *)
-(*     tee init (R.history wall_height r, sender) *)
-      
-(*   let wall_right left = *)
-(*     left + space + 1 *)
-      
-(*   let draw_wall_line color i left = *)
-(*     let y = *)
-(*       (wall_y + i) * ystep *)
-(*     in *)
-(*     set_color color; *)
-(*     moveto 0 y; *)
-(*     for i = 1 to left do *)
-(*       draw_char '=' *)
-(*     done; *)
-(*     for i = 1 to space do *)
-(*       draw_char ' ' *)
-(*     done; *)
-(*     for i = 1 to xmax - (wall_right left) + 1 do *)
-(*       draw_char '=' *)
-(*     done *)
-      
-(*   let draw color (wall, _) = *)
-(*     iteri (draw_wall_line color) (R.read wall) *)
-      
-(*   let space pos (wall, _) = *)
-(*     let left = *)
-(*       List.nth (R.read wall) pos *)
-(*     in *)
-(*     left, left + space + 1 *)
-      
-(*   let new_left wall = *)
-(*     let w1, w2 = *)
-(*       match R.read wall with *)
-(* 	    h1 :: h2 :: _ -> h1, h2 *)
-(*       | _ -> assert false *)
-(*     in *)
-(*     let prob = *)
-(*       if (wall_right w1) = xmax then *)
-(* 	    0 *)
-(*       else if w1 = 1 then *)
-(* 	    100 *)
-(*       else if (wall_right w1) > (xmax - xmax / 6) then *)
-(* 	    30 *)
-(*       else if w1 < (xmax / 6) then *)
-(* 	    70 *)
-(*       else if (w1 - w2) = 1 then *)
-(* 	    80 *)
-(*       else *)
-(* 	    20 *)
-(*     in *)
-(*     if (Random.int 100) < prob then *)
-(*       w1 + 1 *)
-(*     else *)
-(*       w1 - 1 *)
-        
-(*   let update (wall, sender) = *)
-(*     sender (new_left wall); *)
-(*     wall, sender *)
-      
-(* end *)
+end
   
 module Arrow = struct
   
@@ -197,19 +203,12 @@ module Arrow = struct
 
   type t = int list S.t
 
-  let _remove_last l =
-    List.rev (List.tl (List.rev l))
+  let head t =
+    List.hd (S.read t)
 
-  let _make_list x n =
-    let rec loop s n =
-      if n = 0 then s
-      else loop (x :: s) (n - 1)
-    in
-    loop [] n
-
-  let make key_event restart mode =
+  let make key_event restart update mode =
     let initial =
-      _make_list init_pos arrow_height
+      _repeat init_pos arrow_height
     in
     let move =
       Mode.when_playing mode key_event 
@@ -218,38 +217,43 @@ module Arrow = struct
         | 'k' -> Some `Right
         | _ -> None)
     in
-    E.choose [move; _map `Restart restart]
+    E.choose [move; _map `Restart restart; _map `Tick update]
     +> S.fold (fun arrow dir ->
       match dir with
-        | `Restart -> initial
+        | `Restart -> 
+          initial
+        | `Tick ->
+          (List.hd arrow) :: (_remove_last arrow)
         | _ ->
-          let pos, tl = 
-            List.hd arrow, _remove_last (List.tl arrow)
-          in
-          (if dir = `Left then pos - 1 else pos + 1) :: pos :: tl) initial
-      
-  let draw_v color i pos =
-    if i = 0 then
-      G.set_color G.red
-    else
-      G.set_color color;
-    let y =
-      (arrow_y + i) * ystep
-    in
-    G.moveto 0 y;
-    for i = 1 to pos - 1 do
-      G.draw_char ' '
-    done;
-    G.draw_char 'V'
-      
+          match arrow with
+            | pos :: tl ->
+              (if dir = `Left then pos - 1 else pos + 1) :: tl
+            | _ ->
+              arrow
+    ) initial
+            
   let draw color t =
+    let draw_v color i pos =
+      if i = 0 then
+        G.set_color G.red
+      else
+        G.set_color color;
+      let y =
+        (arrow_y + i) * ystep
+      in
+      G.moveto 0 y;
+      for i = 1 to pos - 1 do
+        G.draw_char ' '
+      done;
+      G.draw_char 'V'
+    in
     List.iteri (draw_v color) (S.read t)
       
 end
     
 type env = {
   mode : Mode.t;
-  (* wall : Wall.t; *)
+  wall : Wall.t;
   arrow : Arrow.t;
   score : Score.t;
 }
@@ -268,57 +272,60 @@ module Drawer = struct
   let draw env =
     G.clear_graph ();
     draw_title ();
-    (* Wall.draw green env.wall; *)
+    Wall.draw G.green env.wall;
     Arrow.draw G.green env.arrow;
     Score.draw G.green env.score;
     G.synchronize ()
       
-  (* let update env = *)
-  (*   match Mode.get () with *)
-  (*       Mode.Playing -> *)
-  (*         Gc.full_major(); *)
-  (*         Gc.compact(); *)
-  (*         Thread.delay 0.15; *)
-  (*         let left, right = *)
-	(*           Wall.space Arrow.pos_y env.wall *)
-  (*         in *)
-  (*         let pos =  *)
-	(*           Arrow.move_down env.arrow; *)
-  (*         in *)
-  (*         if pos <= left || right <= pos then *)
-	(*           tee (fun _ -> draw env; Mode.game_over()) env *)
-  (*         else begin *)
-	(*           Score.count_up env.score; *)
-	(*           draw env; *)
-	(*           { env with wall = Wall.update env.wall } *)
-  (*         end *)
-  (*     | Mode.GameOver -> *)
-  (*       tee (fun _ -> draw env; Mode.wait_play ();Thread.delay 0.15;) env *)
 end
 
-let judge judege_tick restart env =
-  S.return Mode.Playing
+let judge judge_tick restart env =
+  let arrow_in_wall arrow wall =
+    let pos =
+      Arrow.head arrow
+    in
+    let left, right =
+      let left =
+        List.nth (S.read wall) (Arrow.arrow_y - 1)
+      in
+      left, left + space + 1
+    in
+    pos <= left || right <= pos
+  in
+  E.choose [_map `Tick judge_tick; _map `Restart restart]
+  +> S.fold (fun s e -> 
+    match e with
+      | `Restart -> 
+        Mode.Playing
+      | `Tick ->
+        if arrow_in_wall env.arrow env.wall then
+          Mode.GameOver
+        else
+          Mode.Playing) Mode.Playing
 
 let react tick_event key_event = 
   let mode =
     S.return Mode.Playing
   in
   let _ =
-    E.filter (fun c -> c = 'q') key_event
+    _filter 'q' key_event
     +> E.subscribe (fun _ -> raise End)
   in
   let restart =
     Mode.when_gameover mode key_event
-    +> E.filter (fun c -> c = 'r')
+    +> _filter 'r'
   in
-  let update_tick, judge_tick =
-    E.filter (fun t -> t = `Phase1) tick_event,
-    E.filter (fun t -> t = `Phase2) tick_event
+  let update_tick =
+    Mode.when_playing mode tick_event
+    +> _filter `Phase1
+  in
+  let judge_tick =
+    _filter `Phase2 tick_event
   in
   let env = {
     mode;
-    (* env.wall <=< Wall.make update_tick restart; *)
-    arrow = Arrow.make key_event restart mode;
+    wall = Wall.make update_tick restart;
+    arrow = Arrow.make key_event restart update_tick mode;
     score = Score.make update_tick restart;
   }
   in
@@ -361,7 +368,7 @@ let main () =
   let env =
     react tick_event (make_key_event ())
   in
-  E.filter (function `Phase3 -> true | _ -> false) tick_event
+  _filter `Phase3 tick_event
   +> E.subscribe (fun _ -> Drawer.draw env)
   +> ignore;
   forever E.run_all ()
