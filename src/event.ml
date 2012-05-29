@@ -298,20 +298,13 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
           (* 同じ時刻の呼び出しはキャッシュとして返せるようにしておく *)
           tee (fun v -> setter (Some { time = time; value = v })) (reader ())
       | v -> 
-        (* ??? *)
-        (*set_notify (); *)
         v
 
-  let set_notify_only id notify e =
-    fun () -> ignore (set_notify_with_id id notify e)
-
-  let rec read : 'a. cell_id -> notify -> time -> 'a event -> 'a option = 
-    fun id notify time -> function
+  let rec read : 'a. cell_id -> time -> 'a event -> 'a option = 
+    fun id time -> function
       | Cell cell ->
         if cell.id = id then begin
           debug (!%"find id=%d\n" id);
-          (* 次回も呼び出してもらえるようにnotifyを代入しておく *)
-          (*ignore (set_notify notify (Cell cell));*)
           cell.data
         end else begin
           debug (!%"id is diff cell.id %d <> %d\n" cell.id id);
@@ -320,7 +313,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
       | Wrap w ->
         debug "map\n";
         let wrap_read () =
-          read id notify time w.event
+          read id time w.event
           +> Option.map w.wrap
         in
         with_latest w.w_latest (fun l -> w.w_latest <- l) time wrap_read 
@@ -330,7 +323,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
             | [] -> None
             | hd :: tl -> begin
               debug (!%"choose %d\n" id);
-              match read id notify time hd  with
+              match read id time hd  with
                 | None -> find_value tl
                 | v -> v
             end
@@ -343,17 +336,13 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
         debug "switch\n";
         let switch_read () =
           debug "try to find inner\n";
-          read id notify time s.outer
+          read id time s.outer
           +> Option.iter (fun inner ->
             debug "get inner\n";
             s.inner <- [inner]);  (* innerは一つに限定する. switchの定義. *)
           match s.inner with
             | [inner] -> (* s.innerリストへは単一要素のしか入っていないはず. *)
-              let notify' =
-                Notify.incr_switch_level notify
-              in
-              ignore (set_notify notify' inner);
-              read id notify' time inner
+              read id time inner
             | _ -> 
               None
         in
@@ -364,18 +353,17 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
       | Return _ -> None
       | Never -> None
 
-
   let subscribe f e =
     let subscribe_id = 
       get_id () 
     in
     let rec follow cell_id time =
       (*debug (!%"raise %d\n" id);*)
+      read cell_id time e
+      +> Option.iter f;
       let notify =
         Notify.make subscribe_id follow
       in
-      read cell_id notify time e
-      +> Option.iter f;
       ignore (set_notify notify e); (* !! 過剰な設定? *)
       (*debug "one notify end\n";*)
     in
@@ -385,6 +373,17 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
 
   let unsubscribe subscribe_id e =
     remove_notify subscribe_id e
+
+  let subscribe_once f e =
+    let subscribe_id = 
+      get_id () 
+    in
+    let rec follow cell_id time =
+      read cell_id time e
+      +> Option.iter f;
+      unsubscribe subscribe_id e
+    in
+    ignore (set_notify (Notify.make subscribe_id follow) e)
 
   let sbind e f =
     switch (map f e)

@@ -65,6 +65,7 @@ module type S = sig
       The [f] will be called when the [e] will occurred. *)
   val subscribe : ('a -> unit) -> 'a t -> subscribe_id
   val unsubscribe : subscribe_id -> 'a t -> unit
+  val subscribe_once : ('a -> unit) -> 'a t -> unit
 
   (** [run ()] runs a PEC event and returns number of events remained in queue. *)
   val run : unit -> int
