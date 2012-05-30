@@ -25,51 +25,8 @@ let rec forever f x =
 let spawn_loop f x =
   ignore (Thread.create (fun () -> forever f x) ())
 
-(* PECに食わせる同期的キューの実装を標準ライブラリのQueueとEventで実装 *)
-module SyncQueueI = struct
-  type elem = unit -> unit
-  type q = {
-    queue : elem Queue.t;
-    push_ch : elem Event.channel;
-    take_ch : elem Event.channel;
-  }
-  let queue : q = {
-    queue = Queue.create ();
-    push_ch = Event.new_channel ();
-    take_ch = Event.new_channel ();
-  }
-end
-
-module SyncQueueM = struct
-  type elem = SyncQueueI.elem
-  type q = SyncQueueI.q
-
-  let _ =
-    let open Event in
-    let q = SyncQueueI.queue in
-    let open SyncQueueI in
-    spawn_loop (fun () ->
-      let ge =
-        guard (fun () -> try send q.take_ch (Queue.peek q.queue) with _ -> choose [])
-      in
-      select [
-        wrap (receive q.push_ch) (fun elem -> Queue.push elem q.queue);
-        wrap ge (fun () -> ignore (Queue.take q.queue));
-      ]) ()
-
-  let push elem q =
-    Event.sync (Event.send q.SyncQueueI.push_ch elem)
-    
-  let take q =
-    Event.sync (Event.receive q.SyncQueueI.take_ch)
-
-  let length q =
-    Queue.length q.SyncQueueI.queue
-
-end
-
 (* 同期的キューを使ったPECのインスタンス化 *)
-module E = Pec.Event.Make (SyncQueueM) (SyncQueueI)
+module E = Pec.Events.Make (Pec.EventQueue.SyncQueue)
 module S = Pec.Signal.Make (E)
 open S.OP
     
@@ -313,15 +270,14 @@ let judge judge_tick restart env =
     pos <= left || right <= pos
   in
   E.choose [_map `Tick judge_tick; _map `Restart restart]
-  +> S.fold (fun s e -> 
-    match e with
-      | `Restart -> 
-        Mode.Playing
-      | `Tick ->
-        if arrow_in_wall env.arrow env.wall then
-          Mode.GameOver
-        else
-          Mode.Playing) Mode.Playing
+  +> S.fold (fun _ -> function
+    | `Restart -> 
+      Mode.Playing
+    | `Tick ->
+      if arrow_in_wall env.arrow env.wall then
+        Mode.GameOver
+      else
+        Mode.Playing) Mode.Playing
 
 let react tick_event key_event = 
   let mode =
@@ -337,10 +293,10 @@ let react tick_event key_event =
   in
   let update_tick =
     Mode.when_playing mode tick_event
-    +> _filter `Phase1
+    +> _filter `Update
   in
   let judge_tick =
-    _filter `Phase2 tick_event
+    _filter `Judge tick_event
   in
   let env = {
     mode;
@@ -372,9 +328,9 @@ let make_tick_event () =
   in
   spawn_loop (fun () ->
     Thread.delay wait;
-    tick_send `Phase1;  (* 状態の更新 *)
-    tick_send `Phase2;  (* ゲームオーバー判定 *)
-    tick_send `Phase3   (* 描画フェーズ *)
+    tick_send `Update;  (* 状態の更新 *)
+    tick_send `Judge;   (* ゲームオーバー判定 *)
+    tick_send `Draw     (* 描画フェーズ *)
   ) ();
   tick_event
     
@@ -389,7 +345,7 @@ let main () =
   let env =
     react tick_event (make_key_event ())
   in
-  _filter `Phase3 tick_event
+  _filter `Draw tick_event
   +> E.subscribe (fun _ -> Drawer.draw env)
   +> ignore;
   forever E.run_all ()

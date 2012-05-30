@@ -5,10 +5,10 @@ include ../OCamlUtil.om
 
 FILES[] =
   eventQueue
-  eventSig
+  eventsSig
   wSeq
   wQueue
-  event
+  events
   signal
 
 NATIVE_ENABLED = true
@@ -17,7 +17,7 @@ BYTE_ENABLED = true
 LIB = pec
 PACKNAME = Pec
 OCAMLPPFLAGS = 
-OCAMLFLAGS += -thread -w -13 -for-pack $(capitalize $(LIB))
+OCAMLFLAGS += -thread -w -13 -w -5 -for-pack $(capitalize $(LIB))
 OCAMLCFLAGS += -dtypes 
 OCAMLDEPFLAGS += $(OCAMLPPFLAGS)
 OCAML_LINK_FLAGS += 

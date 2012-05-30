@@ -1,5 +1,5 @@
 
-module E = Pec.Event.Make (Pec.EventQueue.DefaultQueueM) (Pec.EventQueue.DefaultQueueI)
+module E = Pec.Events.Make (Pec.EventQueue.Default)
 module S = Pec.Signal.Make (E)
 
 let run_all () =

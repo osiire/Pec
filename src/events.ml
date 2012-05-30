@@ -25,6 +25,7 @@ let (+>) f g = g f
 let ($) f g x = f (g x)
 let tee f x = f x; x
 let maybe f x = try `Val (f x) with e -> `Err e
+let value = function `Val v -> v | `Err e -> raise e
 let may_map default f = function Some v -> f v | None -> Lazy.force default
 let empty_map default f = function [] -> Lazy.force default | x -> f x
 let id x = x
@@ -60,7 +61,7 @@ module Option = struct
   let iter f m = match m with None -> () | Some v -> f v
 end
 
-module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
+module Make ( Q : EventQueue.Q ) = struct
 
   type cell_id = int
   type subscribe_id = int
@@ -165,24 +166,26 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
         
   end
 
-  let get_id =
+  let _id_generator () = 
     let counter = ref 0 in
     fun () -> tee (fun _ -> incr counter) !counter
 
+  let get_id =
+    _id_generator ()
+
   let get_time =
-    let counter = ref 0 in
-    fun () -> tee (fun _ -> incr counter) !counter
+    _id_generator ()
 
   let run () =
     let _ =
-      match maybe M.take I.queue with
+      match maybe Q.take Q.queue with
         | `Val e -> 
           e ();
           Queue.iter (fun f -> f()) used_return;
           Queue.clear used_return;
         | _ -> ()
     in
-    M.length I.queue
+    Q.length Q.queue
 
   let run_all () =
     while run () > 0 do () done
@@ -196,11 +199,11 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
     in
     Cell cell,
     (fun x ->
-      M.push
+      Q.push
         (fun () -> 
           let time = get_time () in
           Cell.set_data cell x;
-          Cell.call_notify cell time) I.queue)
+          Cell.call_notify cell time) Q.queue)
 
   let map f e = Wrap {
     event = e;
@@ -267,38 +270,13 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
         List.iter (remove_notify subscribe_id) s.inner
       | _ -> ()
 
-  let rec set_notify_with_id : 'a. cell_id -> notify -> 'a event -> bool = 
-    fun id notify -> function
-      | Cell cell ->
-        if cell.id = id then
-          set_notify notify (Cell cell)
-        else
-          false
-      | Wrap w ->
-        set_notify_with_id id notify w.event
-      | Choose c ->
-        List.fold_left (fun b e -> b || set_notify_with_id id notify e) false c.choose
-      | Switch s ->
-        if set_notify_with_id id notify s.outer then
-          true
-        else
-          List.fold_left (fun b inner -> b || set_notify_with_id id notify inner) false s.inner
-      | _ ->
-        false
-
-  (* let with_latest latest setter time reader set_notify =*)
   let with_latest latest setter time reader =
-    let get_sametime_cache latest time =
-      match latest with
-        | Some l when l.time = time -> l.value
-        | _ -> None
-    in
-    match get_sametime_cache latest time with
-      | None ->
-          (* 同じ時刻の呼び出しはキャッシュとして返せるようにしておく *)
-          tee (fun v -> setter (Some { time = time; value = v })) (reader ())
-      | v -> 
-        v
+    match latest with
+      | Some l when l.time = time -> 
+        l.value
+      | _ -> 
+        (* 同じ時刻の呼び出しはキャッシュとして返せるようにしておく *)
+        tee (fun v -> setter (Some { time = time; value = v })) (reader ())
 
   let rec read : 'a. cell_id -> time -> 'a event -> 'a option = 
     fun id time -> function
@@ -359,12 +337,8 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
     in
     let rec follow cell_id time =
       (*debug (!%"raise %d\n" id);*)
-      read cell_id time e
-      +> Option.iter f;
-      let notify =
-        Notify.make subscribe_id follow
-      in
-      ignore (set_notify notify e); (* !! 過剰な設定? *)
+      read cell_id time e +> Option.iter f;
+      ignore (set_notify (Notify.make subscribe_id follow) e);
       (*debug "one notify end\n";*)
     in
     ignore (set_notify (Notify.make subscribe_id follow) e);
@@ -379,8 +353,7 @@ module Make ( M : EventQueue.M ) (I : EventQueue.I with type q = M.q ) = struct
       get_id () 
     in
     let rec follow cell_id time =
-      read cell_id time e
-      +> Option.iter f;
+      read cell_id time e +> Option.iter f;
       unsubscribe subscribe_id e
     in
     ignore (set_notify (Notify.make subscribe_id follow) e)

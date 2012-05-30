@@ -21,7 +21,7 @@
    SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 *)
 
-module Make : functor (E : EventSig.S) -> sig
+module Make : functor (E : EventsSig.S) -> sig
 
   type 'a t
 

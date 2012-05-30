@@ -36,6 +36,4 @@ val choice3 : 'a -> [>`T3 of 'a]
 val choice4 : 'a -> [>`T4 of 'a]
 val choice5 : 'a -> [>`T5 of 'a]
     
-module Make :
-  functor (M : EventQueue.M) -> 
-    functor (I : EventQueue.I with type q = M.q) -> EventSig.S
+module Make : functor (M : EventQueue.Q) -> EventsSig.S

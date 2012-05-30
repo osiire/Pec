@@ -23,7 +23,7 @@
 
 (* $Id$ *)
 
-module Make ( E : EventSig.S ) = struct
+module Make ( E : EventsSig.S ) = struct
   type 'a t = {
     value : 'a ref;
     event : 'a E.t;

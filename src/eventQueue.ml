@@ -21,26 +21,61 @@
    SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 *)
 
-module type I = sig
-  type q
-  val queue : q
-end
-
-module type M = sig
+module type Q = sig
   type q
   type elem = unit -> unit
+  val queue : q
   val push : elem -> q -> unit
   val take : q -> elem
   val length : q -> int
 end
 
-module DefaultQueueI = struct
+module Default = struct
   type q = (unit -> unit) Queue.t
+  type elem = unit -> unit
   let queue : q = Queue.create ()
+  include Queue
 end
 
-module DefaultQueueM = struct
+module SyncQueue = struct
+  let rec forever f x = 
+    let v = f x in forever f v
+
+  let spawn_loop f x =
+    ignore (Thread.create (fun () -> forever f x) ())
+
   type elem = unit -> unit
-  type q = (unit -> unit) Queue.t
-  include Queue
+  type q = {
+    queue : elem Queue.t;
+    push_ch : elem Event.channel;
+    take_ch : elem Event.channel;
+  }
+
+  let queue : q = {
+    queue = Queue.create ();
+    push_ch = Event.new_channel ();
+    take_ch = Event.new_channel ();
+  }
+
+  let _ =
+    let open Event in
+    let q = queue in
+    spawn_loop (fun () ->
+      let ge =
+        guard (fun () -> try send q.take_ch (Queue.peek q.queue) with _ -> choose [])
+      in
+      select [
+        wrap (receive q.push_ch) (fun elem -> Queue.push elem q.queue);
+        wrap ge (fun () -> ignore (Queue.take q.queue));
+      ]) ()
+
+  let push elem q =
+    Event.sync (Event.send q.push_ch elem)
+    
+  let take q =
+    Event.sync (Event.receive q.take_ch)
+
+  let length q =
+    Queue.length q.queue
+
 end
