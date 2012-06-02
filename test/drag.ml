@@ -1,5 +1,5 @@
 
-module E = Pec.Event.Make (Pec.EventQueue.DefaultQueueM) (Pec.EventQueue.DefaultQueueI)
+module E = Pec.Events
 open E.OP
 
 let (!%) = Printf.sprintf
@@ -16,9 +16,6 @@ let dragging md mu mm =
   ]
   +> E.take_while_in (function `Drop _ -> false | _ -> true))
 
-let run_all () =
-  while E.run () > 0 do () done
-
 let _ =
   dragging mouse_down mouse_up mouse_move
   +> E.subscribe (function 
@@ -30,7 +27,6 @@ let _ =
       | 1 -> send_move (Random.int 10);
       | 2 -> send_up (Random.int 10);
       | _ -> ());
-    run_all ();
     Thread.delay 0.01;
     Gc.full_major ();
     Gc.compact ()

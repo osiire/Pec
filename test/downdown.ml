@@ -26,7 +26,7 @@ let spawn_loop f x =
   ignore (Thread.create (fun () -> forever f x) ())
 
 (* 同期的キューを使ったPECのインスタンス化 *)
-module E = Pec.Events.Make (Pec.EventQueue.SyncQueue)
+module E = Pec.QueuedEvents.Make (Pec.QueuedEvents.SyncQueue)
 module S = Pec.Signal.Make (E)
 open S.OP
     

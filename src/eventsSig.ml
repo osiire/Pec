@@ -23,11 +23,22 @@
 
 module type S = sig
   type 'a t
+  type 'a channel
   type subscribe_id
-      
+
+  val new_channel : unit -> 'a channel
+  val push : 'a channel -> 'a -> unit
+  val events : 'a channel -> 'a t
+
   (** [make ()] makes a new event and sender function.*)
   val make : unit -> 'a t * ('a -> unit)
   val immediate : 'a -> 'a t
+
+  (** [subscribe f e] attaches the [f] to the specified event. 
+      The [f] will be called when the [e] will occurred. *)
+  val subscribe : ('a -> unit) -> 'a t -> subscribe_id
+  val unsubscribe : subscribe_id -> 'a t -> unit
+  val async_read : ('a -> unit) -> 'a t -> unit
 
   val map : ('a -> 'b) -> 'a t -> 'b t
   val map2 : ('a -> 'b -> 'c) -> 'a t -> 'b t -> 'c t
@@ -46,7 +57,6 @@ module type S = sig
 
   (** [sbind e f] is [switch (map f e)] *)
   val sbind : 'a t -> ('a -> 'b t) -> 'b t
-  val scan : ('a -> 'b -> 'a) -> 'a -> 'b t -> 'a t
   val fold : ('a -> 'b -> 'a) -> 'a -> 'b t -> 'a t
   val filter : ('a -> bool) -> 'a t -> 'a t
   val filter_map : ('a -> 'b option) -> 'a t -> 'b t
@@ -61,17 +71,6 @@ module type S = sig
   val delay : int -> 'a t -> 'a t
   val pairwise : 'a t -> ('a * 'a) t
     
-  (** [subscribe f e] attaches the [f] to the specified event. 
-      The [f] will be called when the [e] will occurred. *)
-  val subscribe : ('a -> unit) -> 'a t -> subscribe_id
-  val unsubscribe : subscribe_id -> 'a t -> unit
-  val subscribe_once : ('a -> unit) -> 'a t -> unit
-
-  (** [run ()] runs a PEC event and returns number of events remained in queue. *)
-  val run : unit -> int
-
-  val run_all : unit -> unit
-
   module OP : sig
     val (>>=) : 'a t -> ('a -> 'b t) -> 'b t
   end

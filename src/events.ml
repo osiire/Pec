@@ -61,192 +61,182 @@ module Option = struct
   let iter f m = match m with None -> () | Some v -> f v
 end
 
-module Make ( Q : EventQueue.Q ) = struct
+type cell_id = int
+type subscribe_id = int
+type time = int
+    
+type 'a latest = {
+  time : time;
+  value : 'a option;
+}
 
-  type cell_id = int
-  type subscribe_id = int
-  type time = int
+type notify = {
+  subscribe_id : subscribe_id;
+  follow : cell_id -> time -> unit;
+  switch_level : int;
+}
+
+type 'a mcell = {
+  id : cell_id;
+  mutable data : 'a option;
+  mutable notify : notify list;
+}
+    
+and ('a, 'b) mwrap = {
+  event : 'a event;
+  wrap : 'a -> 'b;
+  mutable w_latest : 'b latest option;
+}
+    
+and 'a choose = {
+  choose : 'a event list;
+  mutable c_latest : 'a latest option;
+}
+
+and 'a mswitch = {
+  outer : 'a event event;
+  mutable inner : 'a event list;
+  mutable s_latest : 'a latest option;
+}
+
+and 'a mreturn = {
+  mutable used : bool; (* returnは1サイクルしか使えない *)
+  return : 'a;
+}
+
+and 'a event =
+  | Cell : 'a mcell -> 'a event
+  | Wrap : ('a, 'b) mwrap -> 'b event
+  | Choose : 'a choose -> 'a event
+  | Never : 'a event
+  | Switch : 'a mswitch -> 'a event
+  | Return : 'a mreturn -> 'a event
+
+type 'a t = 'a event
+type 'a channel = 'a mcell
+
+(* 
+ * returnは1サイクルしか使えない.
+ * 1サイクル中に使ったreturnにusedフラグを立てるクロージャーを格納するキュー.
+ *)
+let used_return = Queue.create ();
+
+module Notify = struct
+  let make id follow =
+    {
+      subscribe_id = id;
+      follow = follow;
+      switch_level = 0; 
+      (* 
+       * switch_levelは、このnotifyerがswitchを何段挟んだnotifyerかを示す数字
+       * この段数が浅いものから順に呼び出される.
+       *)
+    }
+
+  let incr_switch_level n =
+    { n with switch_level = n.switch_level + 1 }
+
+end
+
+module Cell = struct
+  let set_data cell x =
+    cell.data <- Some x
       
-  type 'a latest = {
-    time : time;
-    value : 'a option;
-  }
-
-  type notify = {
-    subscribe_id : subscribe_id;
-    follow : cell_id -> time -> unit;
-    switch_level : int;
-  }
-
-  type 'a mcell = {
-    id : cell_id;
-    mutable data : 'a option;
-    mutable notify : notify list;
-  }
-      
-  and ('a, 'b) mwrap = {
-    event : 'a event;
-    wrap : 'a -> 'b;
-    mutable w_latest : 'b latest option;
-  }
-      
-  and 'a choose = {
-    choose : 'a event list;
-    mutable c_latest : 'a latest option;
-  }
-
-  and 'a mswitch = {
-    outer : 'a event event;
-    mutable inner : 'a event list;
-    mutable s_latest : 'a latest option;
-  }
-
-  and 'a mreturn = {
-    mutable used : bool; (* returnは1サイクルしか使えない *)
-    return : 'a;
-  }
-
-  and 'a event =
-    | Cell : 'a mcell -> 'a event
-    | Wrap : ('a, 'b) mwrap -> 'b event
-    | Choose : 'a choose -> 'a event
-    | Never : 'a event
-    | Switch : 'a mswitch -> 'a event
-    | Return : 'a mreturn -> 'a event
-
-  type 'a t = 'a event
-
-  (* 
-   * returnは1サイクルしか使えない.
-   * 1サイクル中に使ったreturnにusedフラグを立てるクロージャーを格納するキュー.
-   *)
-  let used_return = Queue.create ();
-
-  module Notify = struct
-    let make id follow =
-      {
-        subscribe_id = id;
-        follow = follow;
-        switch_level = 0; 
-        (* 
-         * switch_levelは、このnotifyerがswitchを何段挟んだnotifyerかを示す数字
-         * この段数が浅いものから順に呼び出される.
-         *)
-      }
-
-    let incr_switch_level n =
-      { n with switch_level = n.switch_level + 1 }
-
-  end
-
-  module Cell = struct
-    let set_data cell x =
-      cell.data <- Some x
-      
-    let append_notify cell notify =
-      match maybe (List.find (fun n -> n.subscribe_id = notify.subscribe_id)) cell.notify with
-        | `Val _ -> 
+  let append_notify cell notify =
+    match maybe (List.find (fun n -> n.subscribe_id = notify.subscribe_id)) cell.notify with
+      | `Val _ -> 
           (* 既に同じnotifyが設定されているので重複登録しない.*)
           false
-        | `Err _ -> 
+      | `Err _ -> 
           debug (!%"set_notify! %d\n" cell.id);
           cell.notify <- lappend cell.notify [notify];
           true
 
-    let remove_notify cell subscribe_id =
-      cell.notify <- List.filter (fun n -> n.subscribe_id <> subscribe_id) cell.notify
+  let remove_notify cell subscribe_id =
+    cell.notify <- List.filter (fun n -> n.subscribe_id <> subscribe_id) cell.notify
 
-    let call_notify cell time =
-      let ns = cell.notify in
-      cell.notify <- []; (* notify.follow関数が再度cell.notifyをセットするはず。
-                            これによりnotify関数を削除する手間を省く。*)
+  let call_notify cell time =
+    let ns = cell.notify in
+    cell.notify <- []; (* notify.follow関数が再度cell.notifyをセットするはず。
+                          これによりnotify関数を削除する手間を省く。*)
       (* switch_levelが浅いものから順に呼び出す. これでswitchのアップデート順番を確保する. *)
-      List.sort (fun n1 n2 -> compare n1.switch_level n2.switch_level) ns
-      +> List.iter (fun notify -> notify.follow cell.id time)
-        
-  end
-
-  let _id_generator () = 
-    let counter = ref 0 in
-    fun () -> tee (fun _ -> incr counter) !counter
-
-  let get_id =
-    _id_generator ()
-
-  let get_time =
-    _id_generator ()
-
-  let run () =
-    let _ =
-      match maybe Q.take Q.queue with
-        | `Val e -> 
-          e ();
-          Queue.iter (fun f -> f()) used_return;
-          Queue.clear used_return;
-        | _ -> ()
-    in
-    Q.length Q.queue
-
-  let run_all () =
-    while run () > 0 do () done
-
-  let make () =
-    let cell = {
-      id = get_id ();
-      data = None;
-      notify = [];
-    } 
-    in
-    Cell cell,
-    (fun x ->
-      Q.push
-        (fun () -> 
-          let time = get_time () in
-          Cell.set_data cell x;
-          Cell.call_notify cell time) Q.queue)
-
-  let map f e = Wrap {
-    event = e;
-    wrap = f;
-    w_latest = None;
-  }
-
-  let scramble l =
-    let a = Array.of_list l in
-    let len = Array.length a in
-    if len = 0 then 
-      l
-    else begin
-      for i = len - 1 downto 1 do
-        let j = Random.int (i + 1) in
-        let temp = a.(i) in a.(i) <- a.(j); a.(j) <- temp
-      done;
-      Array.to_list a
-    end
+    List.sort (fun n1 n2 -> compare n1.switch_level n2.switch_level) ns
+    +> List.iter (fun notify -> notify.follow cell.id time)
       
-  let choose es = Choose {
+end
+
+let _id_generator () = 
+  let counter = ref 0 in
+  fun () -> tee (fun _ -> incr counter) !counter
+
+let get_id =
+  _id_generator ()
+
+let get_time =
+  _id_generator ()
+
+let new_channel () =
+  {
+    id = get_id ();
+    data = None;
+    notify = [];
+  } 
+
+let push cell x =
+  let time = get_time () in
+  Cell.set_data cell x;
+  Cell.call_notify cell time;
+  Queue.iter (fun f -> f()) used_return;
+  Queue.clear used_return
+
+let events cell = Cell cell
+
+let make () =
+  let ch = new_channel () in
+  events ch, push ch
+
+let map f e = Wrap {
+  event = e;
+  wrap = f;
+  w_latest = None;
+}
+
+let scramble l =
+  let a = Array.of_list l in
+  let len = Array.length a in
+  if len = 0 then 
+    l
+  else begin
+    for i = len - 1 downto 1 do
+      let j = Random.int (i + 1) in
+      let temp = a.(i) in a.(i) <- a.(j); a.(j) <- temp
+    done;
+    Array.to_list a
+  end
+    
+let choose es = Choose {
     (*choose = scramble es;*)
-    choose = es;
-    c_latest = None;
-  }
+  choose = es;
+  c_latest = None;
+}
 
-  let never = Never
+let never = Never
 
-  let switch ee = Switch {
-    outer = ee;
-    inner = []; (* 過去のinnerを全部記憶するとswitchはjoinになる.*)
-    s_latest = None
-  }
+let switch ee = Switch {
+  outer = ee;
+  inner = []; (* 過去のinnerを全部記憶するとswitchはjoinになる.*)
+  s_latest = None
+}
 
-  let rec set_notify : 'a. notify -> 'a event -> bool = 
-    fun notify -> function
-      | Cell cell ->
+let rec set_notify : 'a. notify -> 'a event -> bool = 
+  fun notify -> function
+    | Cell cell ->
         Cell.append_notify cell notify
-      | Wrap w ->
+    | Wrap w ->
         set_notify notify w.event
-      | Choose c ->
+    | Choose c ->
         List.fold_left (fun b e -> set_notify notify e || b) false c.choose
-      | Switch s ->
+    | Switch s ->
         let outer_b = 
           set_notify notify s.outer 
         in
@@ -254,33 +244,33 @@ module Make ( Q : EventQueue.Q ) = struct
           Notify.incr_switch_level notify
         in
         List.fold_left (fun b e -> set_notify notify' e || b) outer_b s.inner
-      | _ -> 
+    | _ -> 
         false
 
-  let rec remove_notify : 'a. subscribe_id -> 'a event -> unit = 
-    fun subscribe_id -> function
-      | Cell cell ->
+let rec remove_notify : 'a. subscribe_id -> 'a event -> unit = 
+  fun subscribe_id -> function
+    | Cell cell ->
         Cell.remove_notify cell subscribe_id
-      | Wrap w ->
+    | Wrap w ->
         remove_notify subscribe_id w.event
-      | Choose c ->
+    | Choose c ->
         List.iter (remove_notify subscribe_id) c.choose
-      | Switch s ->
+    | Switch s ->
         remove_notify subscribe_id s.outer;
         List.iter (remove_notify subscribe_id) s.inner
-      | _ -> ()
+    | _ -> ()
 
-  let with_latest latest setter time reader =
-    match latest with
-      | Some l when l.time = time -> 
+let with_latest latest setter time reader =
+  match latest with
+    | Some l when l.time = time -> 
         l.value
-      | _ -> 
+    | _ -> 
         (* 同じ時刻の呼び出しはキャッシュとして返せるようにしておく *)
         tee (fun v -> setter (Some { time = time; value = v })) (reader ())
 
-  let rec read : 'a. cell_id -> time -> 'a event -> 'a option = 
-    fun id time -> function
-      | Cell cell ->
+let rec read : 'a. cell_id -> time -> 'a event -> 'a option = 
+  fun id time -> function
+    | Cell cell ->
         if cell.id = id then begin
           debug (!%"find id=%d\n" id);
           cell.data
@@ -288,14 +278,14 @@ module Make ( Q : EventQueue.Q ) = struct
           debug (!%"id is diff cell.id %d <> %d\n" cell.id id);
           None
         end
-      | Wrap w ->
+    | Wrap w ->
         debug "map\n";
         let wrap_read () =
           read id time w.event
           +> Option.map w.wrap
         in
         with_latest w.w_latest (fun l -> w.w_latest <- l) time wrap_read 
-      | Choose c ->
+    | Choose c ->
         let choose_read () =
           let rec find_value = function
             | [] -> None
@@ -310,7 +300,7 @@ module Make ( Q : EventQueue.Q ) = struct
           find_value c.choose
         in
         with_latest c.c_latest (fun l -> c.c_latest <- l) time choose_read 
-      | Switch s ->
+    | Switch s ->
         debug "switch\n";
         let switch_read () =
           debug "try to find inner\n";
@@ -320,166 +310,155 @@ module Make ( Q : EventQueue.Q ) = struct
             s.inner <- [inner]);  (* innerは一つに限定する. switchの定義. *)
           match s.inner with
             | [inner] -> (* s.innerリストへは単一要素のしか入っていないはず. *)
-              read id time inner
+                read id time inner
             | _ -> 
-              None
+                None
         in
         with_latest s.s_latest (fun l -> s.s_latest <- l) time switch_read 
-      | Return x when not x.used -> 
+    | Return x when not x.used -> 
         Queue.add (fun () -> x.used <- true) used_return;
         Some x.return
-      | Return _ -> None
-      | Never -> None
+    | Return _ -> None
+    | Never -> None
 
-  let subscribe f e =
-    let subscribe_id = 
-      get_id () 
-    in
-    let rec follow cell_id time =
-      (*debug (!%"raise %d\n" id);*)
-      read cell_id time e +> Option.iter f;
-      ignore (set_notify (Notify.make subscribe_id follow) e);
-      (*debug "one notify end\n";*)
-    in
+let subscribe f e =
+  let subscribe_id = 
+    get_id () 
+  in
+  let rec follow cell_id time =
+    (*debug (!%"raise %d\n" id);*)
+    read cell_id time e +> Option.iter f;
     ignore (set_notify (Notify.make subscribe_id follow) e);
-    subscribe_id
-    (*debug "subscribe end\n"*)
+    (*debug "one notify end\n";*)
+  in
+  ignore (set_notify (Notify.make subscribe_id follow) e);
+  subscribe_id
+  (*debug "subscribe end\n"*)
 
-  let unsubscribe subscribe_id e =
-    remove_notify subscribe_id e
+let unsubscribe subscribe_id e =
+  remove_notify subscribe_id e
 
-  let subscribe_once f e =
-    let subscribe_id = 
-      get_id () 
-    in
-    let rec follow cell_id time =
-      read cell_id time e +> Option.iter f;
-      unsubscribe subscribe_id e
-    in
-    ignore (set_notify (Notify.make subscribe_id follow) e)
+let async_read f e =
+  let subscribe_id = 
+    get_id () 
+  in
+  let rec follow cell_id time =
+    read cell_id time e +> Option.iter f;
+    unsubscribe subscribe_id e
+  in
+  ignore (set_notify (Notify.make subscribe_id follow) e)
 
-  let sbind e f =
-    switch (map f e)
+let sbind e f =
+  switch (map f e)
 
-  module OP = struct
-    let (>>=) = sbind
-  end
+module OP = struct
+  let (>>=) = sbind
+end
 
-  open OP
+open OP
 
   (* utitly functions *)
 
-  let immediate x =
-    Return { used = false; return = x }
+let immediate x =
+  Return { used = false; return = x }
 
-  let scan f i e =
-    let s = ref i in
-    let ee, sender = make () in
-    switch ee
-    +> tee (fun _ -> 
-      let ie, isender = make () in
-      sender ie;
-      isender i;
-      sender (map (fun x -> tee (fun n -> s := n) (f !s x)) e))
+let fold f i e =
+  let s = ref i in
+  map (fun x -> tee (fun n -> s := n) (f !s x)) e
 
-  let fold f i e =
-    let s = ref i in
-    map (fun x -> tee (fun n -> s := n) (f !s x)) e
+let filter cond e =
+  e >>= (fun x -> if cond x then e else never)
 
-  let filter cond e =
-    e >>= (fun x -> if cond x then e else never)
+let filter_map f e =
+  e >>= (fun x -> match f x with Some v -> immediate v | None -> never)
 
-  let filter_map f e =
-    e >>= (fun x -> match f x with Some v -> immediate v | None -> never)
-
-  let sequence ms =
-    let qs = lmap (fun _ -> WQ.empty ()) ms in
-    let extract qs i v =
-      let qs =
-        lmapi (fun j q -> if j = i then WQ.push q v else q) qs
-      in
-      if List.for_all (fun q -> not (WQ.is_empty q)) qs then
-        lmap WQ.tail qs, Some (lmap WQ.head qs)
-      else
-        qs, None
+let sequence ms =
+  let qs = lmap (fun _ -> WQ.empty ()) ms in
+  let extract qs i v =
+    let qs =
+      lmapi (fun j q -> if j = i then WQ.push q v else q) qs
     in
-    lmapi (fun i e -> map (fun v -> (i, v)) e) ms
-    +> choose
-    +> scan (fun (qs, _) (i, v) -> extract qs i v) (qs, None)
-    +> filter_map snd
+    if List.for_all (fun q -> not (WQ.is_empty q)) qs then
+      lmap WQ.tail qs, Some (lmap WQ.head qs)
+    else
+      qs, None
+  in
+  lmapi (fun i e -> map (fun v -> (i, v)) e) ms
+  +> choose
+  +> fold (fun (qs, _) (i, v) -> extract qs i v) (qs, None)
+  +> filter_map snd
 
-  let zip e1 e2 =
-    sequence [map choice1 e1; map choice2 e2]
-    +> map (function [`T1 v1; `T2 v2] -> v1, v2 | _ -> failwith "must not happen")
+let zip e1 e2 =
+  sequence [map choice1 e1; map choice2 e2]
+  +> map (function [`T1 v1; `T2 v2] -> v1, v2 | _ -> failwith "must not happen")
 
-  let take_while cond e =
-    let flag = ref true in
-    e >>= (fun v -> 
-      if !flag then 
-        if tee (fun b -> flag := b) (cond v) then
-          e
-        else
-          never
-      else
-        never)
-
-  let take_while_in cond e =
-    let flag = ref true in
-    e >>= (fun v -> 
-      if !flag then begin
-        flag := (cond v);
+let take_while cond e =
+  let flag = ref true in
+  e >>= (fun v -> 
+    if !flag then 
+      if tee (fun b -> flag := b) (cond v) then
         e
-      end else
-        never)
-      
-  let take_n n e =
-    let cnt = ref 0 in
-    take_while (fun _ -> tee (fun _ -> incr cnt) (!cnt < n)) e
-
-  let once e =
-    take_n 1 e
-
-  let drop_while cond e =
-    let flag = ref true in
-    e >>= (fun v -> 
-      if !flag then 
-        if tee (fun b -> flag := b) (cond v) then
-          never
-        else
-          e
       else
-        e)
+        never
+    else
+      never)
 
-  let drop_n n e =
-    let cnt = ref 0 in
-    drop_while (fun _ -> tee (fun _ -> incr cnt) (!cnt < n)) e
+let take_while_in cond e =
+  let flag = ref true in
+  e >>= (fun v -> 
+    if !flag then begin
+      flag := (cond v);
+      e
+    end else
+      never)
+    
+let take_n n e =
+  let cnt = ref 0 in
+  take_while (fun _ -> tee (fun _ -> incr cnt) (!cnt < n)) e
 
-  let delay n e =
-    let q = Queue.create () in
-    e >>= (fun v -> 
-      Queue.push v q;
-      if Queue.length q < n then
+let once e =
+  take_n 1 e
+
+let drop_while cond e =
+  let flag = ref true in
+  e >>= (fun v -> 
+    if !flag then 
+      if tee (fun b -> flag := b) (cond v) then
         never
       else
-        immediate (Queue.pop q))
+        e
+    else
+      e)
 
-  let pairwise e =
-    zip e (delay 1 e)
+let drop_n n e =
+  let cnt = ref 0 in
+  drop_while (fun _ -> tee (fun _ -> incr cnt) (!cnt < n)) e
 
-  let map2 f a b =
-    sequence [map choice1 a; map choice2 b]
-    +> map (function [`T1 a; `T2 b] -> f a b | _ -> failwith "must not happen")
+let delay n e =
+  let q = Queue.create () in
+  e >>= (fun v -> 
+    Queue.push v q;
+    if Queue.length q < n then
+      never
+    else
+      immediate (Queue.pop q))
 
-  let map3 f a b c =
-    sequence [map choice1 a; map choice2 b; map choice3 c]
-    +> map (function [`T1 a; `T2 b; `T3 c] -> f a b c | _ -> failwith "must not happen")
+let pairwise e =
+  zip e (delay 1 e)
 
-  let map4 f a b c d =
-    sequence [map choice1 a; map choice2 b; map choice3 c; map choice4 d]
-    +> map (function [`T1 a; `T2 b; `T3 c; `T4 d] -> f a b c d | _ -> failwith "must not happen")
+let map2 f a b =
+  sequence [map choice1 a; map choice2 b]
+  +> map (function [`T1 a; `T2 b] -> f a b | _ -> failwith "must not happen")
 
-  let map5 f a b c d e =
-    sequence [map choice1 a; map choice2 b; map choice3 c; map choice4 d; map choice5 e]
-    +> map (function [`T1 a; `T2 b; `T3 c; `T4 d; `T5 e] -> f a b c d e | _ -> failwith "must not happen")
+let map3 f a b c =
+  sequence [map choice1 a; map choice2 b; map choice3 c]
+  +> map (function [`T1 a; `T2 b; `T3 c] -> f a b c | _ -> failwith "must not happen")
 
-end
+let map4 f a b c d =
+  sequence [map choice1 a; map choice2 b; map choice3 c; map choice4 d]
+  +> map (function [`T1 a; `T2 b; `T3 c; `T4 d] -> f a b c d | _ -> failwith "must not happen")
+
+let map5 f a b c d e =
+  sequence [map choice1 a; map choice2 b; map choice3 c; map choice4 d; map choice5 e]
+  +> map (function [`T1 a; `T2 b; `T3 c; `T4 d; `T5 e] -> f a b c d e | _ -> failwith "must not happen")
+

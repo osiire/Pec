@@ -79,3 +79,24 @@ module SyncQueue = struct
     Queue.length q.queue
 
 end
+
+module Make (Q : Q) = struct
+  include Events
+
+  let push ch x =
+    Q.push (fun () -> push ch x) Q.queue
+
+  let make () =
+    let ch = new_channel () in
+    events ch, push ch
+
+  let run () =
+    let _ =
+      (Q.take Q.queue) ()
+    in
+    Q.length Q.queue
+
+  let run_all () =
+    while run () > 0 do () done
+
+end

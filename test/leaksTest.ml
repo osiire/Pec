@@ -1,9 +1,6 @@
 
-module E = Pec.Event.Make (Pec.EventQueue.DefaultQueueM) (Pec.EventQueue.DefaultQueueI)
+module E = Pec.Events
 module S = Pec.Signal.Make (E)
-
-let run_all () =
-  while E.run () > 0 do () done
 
 let (!%) = Printf.sprintf
 
@@ -16,7 +13,6 @@ let leak_test1 () =
   in
   for i = 0 to 10000000 do
     sender_e (fun x -> x + 1);
-    run_all ();
     ignore (S.read r);
     Gc.full_major ();
     Gc.compact ();
@@ -30,7 +26,7 @@ let leak_test2 () =
   let e2, sender_e2 = E.make () in
   let e3, sender_e3 = E.make () in
   let se = 
-    E.join e2
+    E.switch e2
   in
   sender_e2 e;
   ignore (E.subscribe (fun x -> print_string (!%"%d\n" x);flush stdout) se);
@@ -43,7 +39,6 @@ let leak_test2 () =
     end;
     if i > 10000 then
       sender_e3 ((Random.int 100) + 100);
-    run_all ();
     Gc.full_major ();
     Gc.compact ();
   done;
@@ -54,7 +49,6 @@ let leak_test2 () =
 let make_signal e sender =
   let s = S.fold (fun x () -> x + 1) 0 e in
   sender ();
-  run_all ();
   print_int (S.read s);
   flush stdout
 
