@@ -18,9 +18,13 @@ LIB = pec
 PACKNAME = Pec
 OCAMLPPFLAGS = 
 OCAMLFLAGS += -thread -w -13 -w -5 -for-pack $(capitalize $(LIB))
-OCAMLCFLAGS += -dtypes 
+OCAMLCFLAGS += -dtypes  -bin-annot
 OCAMLDEPFLAGS += $(OCAMLPPFLAGS)
 OCAML_LINK_FLAGS += 
 OCAML_NATIVE_LINK_FLAGS += 
 
 .DEFAULT: $(OCamlPacklessGenerate $(LIB), $(FILES)) $(OCamlLibrary $(LIB), pec)
+
+.PHONY: clean
+clean:
+  rm $(filter-proper-targets $(ls R, .)) *.annot *.cmt  *.cmti

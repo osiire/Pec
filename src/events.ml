@@ -357,10 +357,16 @@ end
 
 open OP
 
-  (* utitly functions *)
+(* utitly functions *)
 
 let immediate x =
   Return { used = false; return = x }
+
+let choice1 x = map choice1 x
+let choice2 x = map choice2 x
+let choice3 x = map choice3 x
+let choice4 x = map choice4 x
+let choice5 x = map choice5 x
 
 let fold f i e =
   let s = ref i in
@@ -389,7 +395,7 @@ let sequence ms =
   +> filter_map snd
 
 let zip e1 e2 =
-  sequence [map choice1 e1; map choice2 e2]
+  sequence [choice1 e1; choice2 e2]
   +> map (function [`T1 v1; `T2 v2] -> v1, v2 | _ -> failwith "must not happen")
 
 let take_while cond e =
@@ -447,18 +453,51 @@ let pairwise e =
   zip e (delay 1 e)
 
 let map2 f a b =
-  sequence [map choice1 a; map choice2 b]
+  sequence [choice1 a; choice2 b]
   +> map (function [`T1 a; `T2 b] -> f a b | _ -> failwith "must not happen")
 
 let map3 f a b c =
-  sequence [map choice1 a; map choice2 b; map choice3 c]
+  sequence [choice1 a; choice2 b; choice3 c]
   +> map (function [`T1 a; `T2 b; `T3 c] -> f a b c | _ -> failwith "must not happen")
 
 let map4 f a b c d =
-  sequence [map choice1 a; map choice2 b; map choice3 c; map choice4 d]
+  sequence [choice1 a; choice2 b; choice3 c; choice4 d]
   +> map (function [`T1 a; `T2 b; `T3 c; `T4 d] -> f a b c d | _ -> failwith "must not happen")
 
 let map5 f a b c d e =
-  sequence [map choice1 a; map choice2 b; map choice3 c; map choice4 d; map choice5 e]
+  sequence [choice1 a; choice2 b; choice3 c; choice4 d; choice5 e]
   +> map (function [`T1 a; `T2 b; `T3 c; `T4 d; `T5 e] -> f a b c d e | _ -> failwith "must not happen")
 
+(*
+let spawn f x =
+  ignore (Thread.create f x)
+
+let rec forever f x = 
+  let v = f x in forever f v
+    
+let spawn_loop f x =
+  ignore (Thread.create (fun () -> forever f x) ())
+
+let future g x =
+  let e, sender = make () in
+  spawn (fun () ->
+    sender (g x)
+  ) ();
+  e
+    
+let timeout limit x =
+  let e, sender = make () in
+  spawn (fun () ->
+    Thread.delay limit;
+    sender x
+  ) ();
+  e
+    
+let repeat_timeout limit x =
+  let e, sender = make () in
+  spawn_loop (fun () ->
+    Thread.delay limit;
+    sender x
+  ) ();
+  e
+*)

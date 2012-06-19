@@ -48,7 +48,12 @@ module type S = sig
 
   (** [choose l] is a event which will be raised when one of specified events occurred. *)
   val choose : 'a t list -> 'a t
-  
+  val choice1 : 'a t -> [> `T1 of 'a] t
+  val choice2 : 'a t -> [> `T2 of 'a] t
+  val choice3 : 'a t -> [> `T3 of 'a] t
+  val choice4 : 'a t -> [> `T4 of 'a] t
+  val choice5 : 'a t -> [> `T5 of 'a] t
+
   val never : 'a t
 
   (** [switch ee] is a event which will be raised when a inner event occurred. 
@@ -70,6 +75,12 @@ module type S = sig
   val drop_n : int -> 'a t -> 'a t
   val delay : int -> 'a t -> 'a t
   val pairwise : 'a t -> ('a * 'a) t
+
+(*
+  val future : ('a -> 'b) -> 'a -> 'b t
+  val timeout : float -> 'a -> 'a t
+  val repeat_timeout : float -> 'a -> 'a t
+*)
     
   module OP : sig
     val (>>=) : 'a t -> ('a -> 'b t) -> 'b t
