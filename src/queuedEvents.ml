@@ -38,45 +38,42 @@ module Default = struct
 end
 
 module SyncQueue = struct
-  let rec forever f x = 
-    let v = f x in forever f v
-
-  let spawn_loop f x =
-    ignore (Thread.create (fun () -> forever f x) ())
-
   type elem = unit -> unit
+
   type q = {
-    queue : elem Queue.t;
-    push_ch : elem Event.channel;
-    take_ch : elem Event.channel;
-  }
+      queue : elem Queue.t; 
+      lock : Mutex.t; 
+      non_empty : Condition.t 
+    }
+        
+  let create () =
+    {
+     queue = Queue.create ();
+     lock = Mutex.create ();
+     non_empty = Condition.create ();
+    }
+      
+  let queue : q = create ()
 
-  let queue : q = {
-    queue = Queue.create ();
-    push_ch = Event.new_channel ();
-    take_ch = Event.new_channel ();
-  }
-
-  let _ =
-    let open Event in
-    let q = queue in
-    spawn_loop (fun () ->
-      let ge =
-        guard (fun () -> try send q.take_ch (Queue.peek q.queue) with _ -> choose [])
-      in
-      select [
-        wrap (receive q.push_ch) (fun elem -> Queue.push elem q.queue);
-        wrap ge (fun () -> ignore (Queue.take q.queue));
-      ]) ()
-
-  let push elem q =
-    Event.sync (Event.send q.push_ch elem)
-    
+  let push e q =
+    Mutex.lock q.lock;
+    if Queue.length q.queue = 0 then Condition.signal q.non_empty;
+    Queue.add e q.queue;
+    Mutex.unlock q.lock
+      
   let take q =
-    Event.sync (Event.receive q.take_ch)
+    Mutex.lock q.lock;
+    while Queue.length q.queue = 0 
+    do 
+      Condition.wait q.non_empty q.lock 
+    done;  
+    let x = Queue.take q.queue in
+    Mutex.unlock q.lock; x
 
   let length q =
-    Queue.length q.queue
+    Mutex.lock q.lock;
+    let x = Queue.length q.queue in
+    Mutex.unlock q.lock; x
 
 end
 
