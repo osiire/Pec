@@ -1,4 +1,5 @@
-module E = Pec.Event.Make (Pec.EventQueue.DefaultQueueM) (Pec.EventQueue.DefaultQueueI)
+
+module E = Pec.QueuedEvents.Make (Pec.QueuedEvents.Default)
 module S = Pec.Signal.Make (E)
 open S.OP
 

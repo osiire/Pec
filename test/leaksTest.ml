@@ -1,5 +1,5 @@
 
-module E = Pec.Events
+module E = Pec.QueuedEvents.Make (Pec.QueuedEvents.Default)
 module S = Pec.Signal.Make (E)
 
 let (!%) = Printf.sprintf

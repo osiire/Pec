@@ -3,10 +3,9 @@ let (!%) = Printf.sprintf
 let (+>) f g = g f
 let p s = Printf.printf "%s\n" s; flush stdout
 
-module E = Pec.Event.Make (Pec.EventQueue.DefaultQueueM) (Pec.EventQueue.DefaultQueueI)
+module E = Pec.QueuedEvents.Make (Pec.QueuedEvents.Default)
 module S = Pec.Signal.Make (E)
 open S.OP
-open Pec.Event
 
 let b1_click, send_b1_click = E.make ()
 let b2_click, send_b2_click = E.make ()
@@ -52,7 +51,8 @@ let _ =
   E.run_all ();
   assert (S.read b1 = OFF);
   S.event b1
-  +> E.subscribe (fun b -> print_string (!%"%s\n" (to_string b)));
+  +> E.subscribe (fun b -> print_string (!%"%s\n" (to_string b)))
+  +> ignore;
 
   send_b1_click ();
   E.run_all ();

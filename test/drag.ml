@@ -1,5 +1,6 @@
 
-module E = Pec.Events
+module E = Pec.QueuedEvents.Make (Pec.QueuedEvents.Default)
+module S = Pec.Signal.Make (E)
 open E.OP
 
 let (!%) = Printf.sprintf
@@ -20,13 +21,15 @@ let _ =
   dragging mouse_down mouse_up mouse_move
   +> E.subscribe (function 
     | `Drag (sloc, eloc) -> print_string (!%"Drag %d,%d\n" sloc eloc); flush stdout;
-    | `Drop (sloc, eloc) -> print_string (!%"Drop %d,%d\n" sloc eloc); flush stdout;);
+    | `Drop (sloc, eloc) -> print_string (!%"Drop %d,%d\n" sloc eloc); flush stdout;)
+  +> ignore;
   while true do
     (match Random.int 3 with
       | 0 -> send_down (Random.int 10);
       | 1 -> send_move (Random.int 10);
       | 2 -> send_up (Random.int 10);
       | _ -> ());
+    E.run_all();
     Thread.delay 0.01;
     Gc.full_major ();
     Gc.compact ()

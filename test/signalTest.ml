@@ -1,15 +1,19 @@
 
-module E = Pec.Events
+module E = Pec.QueuedEvents.Make (Pec.QueuedEvents.Default)
 module S = Pec.Signal.Make (E)
+open S.OP
 
 let put_test () =
   let s = S.return 1 in
   assert( S.read s = 1 );
   S.put s 2;
+  E.run_all ();
   assert( S.read s = 2 );
   S.put s 3;
+  E.run_all ();
   assert( S.read s = 3 );
   S.put s 4;
+  E.run_all ();
   assert( S.read s = 4 )
 
 (*
@@ -60,12 +64,16 @@ let choose_test () =
 let fold_test () =
   let e, sender = E.make () in
   let s = S.fold (+) 0 e in
+  E.run_all();
   assert (S.read s = 0);
   sender 1;
+  E.run_all();
   assert (S.read s = 1);
   sender 2;
+  E.run_all();
   assert (S.read s = 3);
   sender 3;
+  E.run_all();
   assert (S.read s = 6)
 
 (* let filter_test () = *)
