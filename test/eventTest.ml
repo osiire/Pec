@@ -1,5 +1,5 @@
 
-module E = Pec.Events
+module E = Pec.QueuedEvents.Make (Pec.QueuedEvents.Default)
 open E.OP
 
 let (!%) = Printf.sprintf
@@ -17,6 +17,7 @@ let direct_test () =
   sender 4;
   sender 5;
   (*print_string (String.concat "," (List.map string_of_int !seq));*)
+  E.run_all ();
   assert ( List.rev !seq = [1;2;3;4;5])
 
 let map_test () =
@@ -26,6 +27,7 @@ let map_test () =
   let _ = E.subscribe (fun v -> seq := v :: !seq) e in
   sender 1;
   sender 2;
+  E.run_all ();
   assert ( List.rev !seq = [2;3;])
 
 let choose_test () =
@@ -36,6 +38,7 @@ let choose_test () =
   let _ = E.subscribe (fun v -> seq := v :: !seq) e in
   sender1 3;
   sender2 4;
+  E.run_all ();
   assert ( List.rev !seq = [3;4])
 
 let switch_test () =
@@ -51,6 +54,7 @@ let switch_test () =
   sender2 cell3;
   sender3 10;
   sender3 11;
+  E.run_all ();
   assert ( List.rev !seq = [9;3;10;11])
 
 let filter_test () =
@@ -65,6 +69,7 @@ let filter_test () =
   sender1 9;
   sender1 3;
   sender1 10;
+  E.run_all ();
   assert ( List.rev !seq = [1;2;3])
 
 let map2_test () =
@@ -78,6 +83,7 @@ let map2_test () =
   sender1 1;
   sender1 2;
   sender1 3;
+  E.run_all ();
   assert ( List.rev !seq1 = [2;3;4]);
   assert ( List.rev !seq2 = [3;4;5])  
 
@@ -104,6 +110,7 @@ let smap2_test () =
   (* print_newline(); *)
   (* print_string (String.concat "," (List.map string_of_int (List.rev !seq2))); *)
   (* print_newline(); *)
+  E.run_all ();
   assert ( List.rev !seq1 = [2;3;4;6;7]);
   assert ( List.rev !seq2 = [3;4;5;7;8])
 
@@ -128,6 +135,7 @@ let sbind_test () =
   sender2 8;
   sender1 9;
   sender2 10;
+  E.run_all ();
   assert ( List.rev !seq = [4;6;10;12])
 
 let diamond_test () =
@@ -139,6 +147,7 @@ let diamond_test () =
   let _ = E.subscribe (fun v -> seq := v :: !seq) e3 in
   sender1 1;
   sender1 2;
+  E.run_all ();
   let r = List.rev !seq in
   assert ( r = [2;3] || r = [2; 4] || r = [3; 3] || r = [3; 4])
 
@@ -157,6 +166,7 @@ let zip_test () =
   (* print_string (!%"len=%d\n" (List.length !seq)); *)
   (* print_string (String.concat ";" (List.map (fun (v1,v2) -> !%"%d,%d" v1 v2) (List.rev !seq))); *)
   (* flush stdout; *)
+  E.run_all ();
   assert ( List.rev !seq = [1,2; 4,3;] )
 
 let sequence_test () =
@@ -169,6 +179,7 @@ let sequence_test () =
   sender2 2;
   sender1 3;
   sender2 4;
+  E.run_all ();
   assert ( List.rev !seq = [[1;2]; [3;4];] )  
 
 let once_test () =
@@ -179,6 +190,7 @@ let once_test () =
   sender1 2;
   sender1 3;
   sender1 4;
+  E.run_all ();
   assert ( !seq = [1] )
 
 let immediate_test () =
@@ -188,6 +200,7 @@ let immediate_test () =
   let _ =  E.subscribe (fun v -> seq := v :: !seq) e' in
   sender 1;
   sender 2;
+  E.run_all ();
   assert ( !seq = [3;3] )
 
 (* module QC = WQuickCheck *)
@@ -243,6 +256,7 @@ let divz_test () =
   sender 0;
   sender 4;
   (*print_string (String.concat "," (List.map string_of_int !seq));*)
+  E.run_all ();
   assert ( List.rev !seq = [100;50;25])
 
 let tests =
