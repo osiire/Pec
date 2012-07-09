@@ -80,13 +80,6 @@ end
 module Make (Q : Q) = struct
   include Events
 
-  let push ch x =
-    Q.push (fun () -> push ch x) Q.queue
-
-  let make () =
-    let ch = new_channel () in
-    events ch, push ch
-
   let run () =
     let _ =
       (Q.take Q.queue) ()

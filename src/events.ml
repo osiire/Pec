@@ -220,6 +220,8 @@ let choose es = Choose {
   c_latest = None;
 }
 
+let merge es = choose es
+
 let never = Never
 
 let switch ee = Switch {
@@ -338,7 +340,7 @@ let subscribe f e =
 let unsubscribe subscribe_id e =
   remove_notify subscribe_id e
 
-let async_read f e =
+let subscribe_once f e =
   let subscribe_id = 
     get_id () 
   in
@@ -347,6 +349,42 @@ let async_read f e =
     unsubscribe subscribe_id e
   in
   ignore (set_notify (Notify.make subscribe_id follow) e)
+
+let async_repeat f e = subscribe f e
+let stop_repeat id e = unsubscribe id e
+let async f e = subscribe_once f e
+
+let sync e =
+  let subscribe_id = 
+    get_id () 
+  in
+  let lock = Mutex.create () in
+  let fire = Condition.create () in
+  let data = ref None in
+  let on_receive x =
+    Mutex.lock lock;
+    Condition.signal fire;
+    data := Some x;
+    Mutex.unlock lock
+  in
+  let rec follow cell_id time =
+    read cell_id time e 
+    +> Option.iter on_receive;
+    unsubscribe subscribe_id e
+  in
+  Mutex.lock lock;
+  ignore (set_notify (Notify.make subscribe_id follow) e);
+  while !data = None do 
+    Condition.wait fire lock 
+  done;
+  try
+    match !data with
+    | None -> failwith "must not occur"
+    | Some v ->
+        v +> tee (fun _ -> Mutex.unlock lock)
+  with e -> 
+    Mutex.unlock lock;
+    raise e
 
 let sbind e f =
   switch (map f e)
