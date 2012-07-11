@@ -81,11 +81,12 @@ type 'a mcell = {
   mutable data : 'a option;
   mutable notify : notify list;
 }
-    
-and ('a, 'b) mwrap = {
-  event : 'a event;
-  wrap : 'a -> 'b;
-  mutable w_latest : 'b latest option;
+
+and 'a mwrap = {
+  mutable get : cell_id -> time -> 'a option;
+  mutable w_latest : 'a latest option;
+  set_notify : notify -> bool;
+  remove_notify : subscribe_id -> unit;
 }
     
 and 'a choose = {
@@ -105,12 +106,12 @@ and 'a mreturn = {
 }
 
 and 'a event =
-  | Cell : 'a mcell -> 'a event
-  | Wrap : ('a, 'b) mwrap -> 'b event
-  | Choose : 'a choose -> 'a event
-  | Never : 'a event
-  | Switch : 'a mswitch -> 'a event
-  | Return : 'a mreturn -> 'a event
+  | Cell of 'a mcell
+  | Wrap of 'a mwrap
+  | Choose of 'a choose
+  | Never
+  | Switch of 'a mswitch
+  | Return of 'a mreturn
 
 type 'a t = 'a event
 type 'a channel = 'a mcell
@@ -195,12 +196,6 @@ let make () =
   let ch = new_channel () in
   events ch, push ch
 
-let map f e = Wrap {
-  event = e;
-  wrap = f;
-  w_latest = None;
-}
-
 let scramble l =
   let a = Array.of_list l in
   let len = Array.length a in
@@ -233,7 +228,7 @@ let rec set_notify : 'a. notify -> 'a event -> bool =
     | Cell cell ->
         Cell.append_notify cell notify
     | Wrap w ->
-        set_notify notify w.event
+        w.set_notify notify
     | Choose c ->
         List.fold_left (fun b e -> set_notify notify e || b) false c.choose
     | Switch s ->
@@ -252,7 +247,7 @@ let rec remove_notify : 'a. subscribe_id -> 'a event -> unit =
     | Cell cell ->
         Cell.remove_notify cell subscribe_id
     | Wrap w ->
-        remove_notify subscribe_id w.event
+        w.remove_notify subscribe_id
     | Choose c ->
         List.iter (remove_notify subscribe_id) c.choose
     | Switch s ->
@@ -279,12 +274,7 @@ let rec read : 'a. cell_id -> time -> 'a event -> 'a option =
           None
         end
     | Wrap w ->
-        debug "map\n";
-        let wrap_read () =
-          read id time w.event
-          +> Option.map w.wrap
-        in
-        with_latest w.w_latest (fun l -> w.w_latest <- l) time wrap_read 
+        w.get id time
     | Choose c ->
         let choose_read () =
           let rec find_value = function
@@ -347,6 +337,22 @@ let async_read f e =
     unsubscribe subscribe_id e
   in
   ignore (set_notify (Notify.make subscribe_id follow) e)
+
+let map f e = 
+  let w = {
+    get=(fun _ _ -> failwith "err");
+    set_notify=(fun n -> set_notify n e);
+    remove_notify=(fun id -> remove_notify id e);
+    w_latest=None;
+  } in
+  w.get <- (fun id time ->
+        debug "map\n";
+        let wrap_read () =
+          read id time e
+          +> Option.map f
+        in
+        with_latest w.w_latest (fun l -> w.w_latest <- l) time wrap_read);
+  Wrap w
 
 let sbind e f =
   switch (map f e)
