@@ -104,6 +104,12 @@ and 'a mreturn = {
   return : 'a;
 }
 
+and 'a mguard = {
+    g : unit -> 'a event;
+    generated : (subscribe_id, 'a event) Hashtbl.t;
+    mutable g_latest : 'a latest option;
+  }
+
 and 'a event =
   | Cell : 'a mcell -> 'a event
   | Wrap : ('a, 'b) mwrap -> 'b event
@@ -111,6 +117,7 @@ and 'a event =
   | Never : 'a event
   | Switch : 'a mswitch -> 'a event
   | Return : 'a mreturn -> 'a event
+  | Guard : 'a mguard -> 'a event
 
 type 'a t = 'a event
 type 'a channel = 'a mcell
@@ -224,10 +231,19 @@ let merge es = choose es
 
 let never = Never
 
+let immediate x =
+  Return { used = false; return = x }
+
 let switch ee = Switch {
   outer = ee;
   inner = []; (* 過去のinnerを全部記憶するとswitchはjoinになる.*)
   s_latest = None
+}
+
+let guard f = Guard {
+  g = f;
+  generated = Hashtbl.create 10;
+  g_latest = None;
 }
 
 let rec set_notify : 'a. notify -> 'a event -> bool = 
@@ -246,6 +262,12 @@ let rec set_notify : 'a. notify -> 'a event -> bool =
           Notify.incr_switch_level notify
         in
         List.fold_left (fun b e -> set_notify notify' e || b) outer_b s.inner
+    | Guard g -> 
+        let new_ev =
+          g.g ()
+        in
+        Hashtbl.replace g.generated notify.subscribe_id new_ev;
+        set_notify notify new_ev
     | _ -> 
         false
 
@@ -260,6 +282,13 @@ let rec remove_notify : 'a. subscribe_id -> 'a event -> unit =
     | Switch s ->
         remove_notify subscribe_id s.outer;
         List.iter (remove_notify subscribe_id) s.inner
+    | Guard g -> begin
+        try
+          remove_notify subscribe_id (Hashtbl.find g.generated subscribe_id);
+          Hashtbl.remove g.generated subscribe_id;
+        with
+          Not_found -> ()
+    end
     | _ -> ()
 
 let with_latest latest setter time reader =
@@ -270,20 +299,20 @@ let with_latest latest setter time reader =
         (* 同じ時刻の呼び出しはキャッシュとして返せるようにしておく *)
         tee (fun v -> setter (Some { time = time; value = v })) (reader ())
 
-let rec read : 'a. cell_id -> time -> 'a event -> 'a option = 
-  fun id time -> function
+let rec read : 'a. subscribe_id -> cell_id -> time -> 'a event -> 'a option = 
+  fun sid cid time -> function
     | Cell cell ->
-        if cell.id = id then begin
-          debug (!%"find id=%d\n" id);
+        if cell.id = cid then begin
+          debug (!%"find id=%d\n" cid);
           cell.data
         end else begin
-          debug (!%"id is diff cell.id %d <> %d\n" cell.id id);
+          debug (!%"id is diff cell.id %d <> %d\n" cell.id cid);
           None
         end
     | Wrap w ->
         debug "map\n";
         let wrap_read () =
-          read id time w.event
+          read sid cid time w.event
           +> Option.map w.wrap
         in
         with_latest w.w_latest (fun l -> w.w_latest <- l) time wrap_read 
@@ -292,13 +321,13 @@ let rec read : 'a. cell_id -> time -> 'a event -> 'a option =
           let rec find_value = function
             | [] -> None
             | hd :: tl -> begin
-              debug (!%"choose %d\n" id);
-              match read id time hd  with
+              debug (!%"choose %d\n" cid);
+              match read sid cid time hd  with
                 | None -> find_value tl
                 | v -> v
             end
           in
-          (* 最初に見つけたidにマッチするイベントの値を見つけてくる *)
+          (* 最初に見つけたcell_idにマッチするイベントの値を見つけてくる *)
           find_value c.choose
         in
         with_latest c.c_latest (fun l -> c.c_latest <- l) time choose_read 
@@ -306,17 +335,25 @@ let rec read : 'a. cell_id -> time -> 'a event -> 'a option =
         debug "switch\n";
         let switch_read () =
           debug "try to find inner\n";
-          read id time s.outer
+          read sid cid time s.outer
           +> Option.iter (fun inner ->
             debug "get inner\n";
             s.inner <- [inner]);  (* innerは一つに限定する. switchの定義. *)
           match s.inner with
             | [inner] -> (* s.innerリストへは単一要素のしか入っていないはず. *)
-                read id time inner
+                read sid cid time inner
             | _ -> 
                 None
         in
         with_latest s.s_latest (fun l -> s.s_latest <- l) time switch_read 
+    | Guard g ->
+        let guard_read () =
+          try 
+            read sid cid time (Hashtbl.find g.generated sid)
+          with
+            Not_found -> None
+        in
+        with_latest g.g_latest (fun l -> g.g_latest <- l) time guard_read 
     | Return x when not x.used -> 
         Queue.add (fun () -> x.used <- true) used_return;
         Some x.return
@@ -329,7 +366,7 @@ let subscribe f e =
   in
   let rec follow cell_id time =
     (*debug (!%"raise %d\n" id);*)
-    read cell_id time e +> Option.iter f;
+    read subscribe_id cell_id time e +> Option.iter f;
     ignore (set_notify (Notify.make subscribe_id follow) e);
     (*debug "one notify end\n";*)
   in
@@ -345,8 +382,9 @@ let subscribe_once f e =
     get_id () 
   in
   let rec follow cell_id time =
-    read cell_id time e +> Option.iter f;
-    unsubscribe subscribe_id e
+    read subscribe_id cell_id time e +> Option.iter (fun v ->
+      f v;
+      unsubscribe subscribe_id e)
   in
   ignore (set_notify (Notify.make subscribe_id follow) e)
 
@@ -368,9 +406,10 @@ let sync e =
     Mutex.unlock lock
   in
   let rec follow cell_id time =
-    read cell_id time e 
-    +> Option.iter on_receive;
-    unsubscribe subscribe_id e
+    read subscribe_id cell_id time e 
+    +> Option.iter (fun v ->
+      on_receive v;
+      unsubscribe subscribe_id e)
   in
   Mutex.lock lock;
   ignore (set_notify (Notify.make subscribe_id follow) e);
@@ -386,6 +425,7 @@ let sync e =
     Mutex.unlock lock;
     raise e
 
+(* utitly functions *)
 let sbind e f =
   switch (map f e)
 
@@ -394,11 +434,6 @@ module OP = struct
 end
 
 open OP
-
-(* utitly functions *)
-
-let immediate x =
-  Return { used = false; return = x }
 
 let choice1 x = map choice1 x
 let choice2 x = map choice2 x

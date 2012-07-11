@@ -42,7 +42,7 @@ module type S = sig
   (** same as subscribe_once *)
   val async : ('a -> unit) -> 'a t -> unit
 
-  (* *)
+  (** synchronusly wait a next event and return the value. *)
   val sync : 'a t -> 'a
 
   val map : ('a -> 'b) -> 'a t -> 'b t
@@ -70,7 +70,7 @@ module type S = sig
     "Inner event" is a event taken from outer event [ee].*)
   val switch : 'a t t -> 'a t
 
-  (* val guard : (unit -> 'a t) -> 'a t *)
+  val guard : (unit -> 'a t) -> 'a t
   (* val split : int -> 'a t -> 'a t list *)
 
   (** [sbind e f] is [switch (map f e)] *)
