@@ -340,10 +340,10 @@ let async_read f e =
 
 let map f e = 
   let w = {
-    get=(fun _ _ -> failwith "err");
-    set_notify=(fun n -> set_notify n e);
-    remove_notify=(fun id -> remove_notify id e);
-    w_latest=None;
+    get = (fun _ _ -> failwith "err");
+    set_notify = (fun n -> set_notify n e);
+    remove_notify = (fun id -> remove_notify id e);
+    w_latest = None;
   } in
   w.get <- (fun id time ->
         debug "map\n";
