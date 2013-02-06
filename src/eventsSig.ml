@@ -1,6 +1,6 @@
-(*   
+(*
    Copyright (c) 2011 IT Planning inc. All Rights Reserved.
- 
+
    Permission is hereby granted, free of charge, to any person obtaining
    a copy of this software and associated documentation files (the
    "Software"), to deal in the Software without restriction, including
@@ -8,10 +8,10 @@
    distribute, sublicense, and/or sell copies of the Software, and to
    permit persons to whom the Software is furnished to do so, subject to
    the following conditions:
-   
+
    The above copyright notice and this permission notice shall be
    included in all copies or substantial portions of the Software.
-   
+
    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
    EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
@@ -34,7 +34,7 @@ module type S = sig
   val make : unit -> 'a t * ('a -> unit)
   val immediate : 'a -> 'a t
 
-  (** [subscribe f e] attaches the [f] to the specified event. 
+  (** [subscribe f e] attaches the [f] to the specified event.
       The [f] will be called when the [e] will occurred. *)
   val subscribe : ('a -> unit) -> 'a t -> subscribe_id
   val unsubscribe : subscribe_id -> 'a t -> unit
@@ -56,7 +56,7 @@ module type S = sig
 
   val never : 'a t
 
-  (** [switch ee] is a event which will be raised when a inner event occurred. 
+  (** [switch ee] is a event which will be raised when a inner event occurred.
     "Inner event" is a event taken from outer event [ee].*)
   val switch : 'a t t -> 'a t
 
@@ -76,12 +76,15 @@ module type S = sig
   val delay : int -> 'a t -> 'a t
   val pairwise : 'a t -> ('a * 'a) t
 
+  val split : 'a t -> ('a -> bool) -> 'a t * 'a t
+  val split_n : 'a t -> int -> 'a t list
+
 (*
   val future : ('a -> 'b) -> 'a -> 'b t
   val timeout : float -> 'a -> 'a t
   val repeat_timeout : float -> 'a -> 'a t
 *)
-    
+
   module OP : sig
     val (>>=) : 'a t -> ('a -> 'b t) -> 'b t
   end

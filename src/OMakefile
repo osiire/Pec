@@ -27,4 +27,4 @@ OCAML_NATIVE_LINK_FLAGS +=
 
 .PHONY: clean
 clean:
-  rm $(filter-proper-targets $(ls R, .)) *.annot *.cmt  *.cmti
+  rm $(filter-proper-targets $(ls R, .)) *.annot
