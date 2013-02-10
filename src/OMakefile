@@ -5,11 +5,12 @@ include ../OCamlUtil.om
 
 FILES[] =
   eventsSig
+  queues
   wSeq
   wQueue
+  eventsImpl
   events
   signal
-  queuedEvents
 
 NATIVE_ENABLED = true
 BYTE_ENABLED = true

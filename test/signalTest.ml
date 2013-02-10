@@ -1,5 +1,5 @@
 
-module E = Pec.QueuedEvents.Make (Pec.QueuedEvents.Default)
+module E = Pec.Events.Make (Pec.Queues.Default)
 module S = Pec.Signal.Make (E)
 open S.OP
 
@@ -216,4 +216,4 @@ let _ =
     print_string  (!%"running %s.." name);
     f ();
     print_string "done\n") tests
-  
+

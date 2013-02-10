@@ -1,5 +1,5 @@
 
-module E = Pec.QueuedEvents.Make (Pec.QueuedEvents.Default)
+module E = Pec.Events.Make (Pec.Queues.Default)
 open E.OP
 
 let (!%) = Printf.sprintf
@@ -85,7 +85,7 @@ let map2_test () =
   sender1 3;
   E.run_all ();
   assert ( List.rev !seq1 = [2;3;4]);
-  assert ( List.rev !seq2 = [3;4;5])  
+  assert ( List.rev !seq2 = [3;4;5])
 
 let smap2_test () =
   let seq1 = ref [] in
@@ -180,7 +180,7 @@ let sequence_test () =
   sender1 3;
   sender2 4;
   E.run_all ();
-  assert ( List.rev !seq = [[1;2]; [3;4];] )  
+  assert ( List.rev !seq = [[1;2]; [3;4];] )
 
 let once_test () =
   let seq = ref [] in
@@ -260,7 +260,7 @@ let divz_test () =
   assert ( List.rev !seq = [100;50;25])
 
 let tests =
-  [ 
+  [
     "direct test", direct_test;
     "map test", map_test;
     "choose test", choose_test;
@@ -285,4 +285,4 @@ let _ =
     print_string  (!%"running %s.." name);
     f ();
     print_string "done\n") tests;
-  
+

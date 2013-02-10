@@ -68,7 +68,6 @@ module type S = sig
   val zip : 'a t -> 'b t -> ('a * 'b) t
   val sequence : 'a t list -> 'a list t
   val take_while : ('a -> bool) -> 'a t -> 'a t
-  val take_while_in : ('a -> bool) -> 'a t -> 'a t
   val take_n : int -> 'a t -> 'a t
   val once : 'a t -> 'a t
   val drop_while : ('a -> bool) -> 'a t -> 'a t
@@ -78,6 +77,32 @@ module type S = sig
 
   val split : 'a t -> ('a -> bool) -> 'a t * 'a t
   val split_n : 'a t -> int -> 'a t list
+
+  module type LazyListSig = sig
+    type 'a t
+    val unfold : ('a -> ('b * 'a) option) -> 'a -> 'b t
+  end
+
+  module Import (L : LazyListSig) : sig
+    (**
+        be careful, the lazy list will block the thread until a new event occured.
+        you should evaluate the lazy list outside of event loop.
+        (this implementaion is multi-thread safe.)
+     *)
+    val to_llist : 'a t -> 'a L.t
+  end
+
+  type ('a, 'b) choice2 =
+      [ `T1 of 'a | `T2 of 'b]
+  type ('a, 'b, 'c) choice3 =
+      [ ('a,'b) choice2 | `T3 of 'c ]
+  type ('a, 'b, 'c, 'd) choice4 =
+      [ ('a,'b, 'c) choice3 | `T4 of 'd ]
+  type ('a, 'b, 'c, 'd, 'e) choice5 =
+      [ ('a,'b, 'c, 'd) choice4 | `T5 of 'e ]
+
+  val run : unit -> int
+  val run_all : unit -> unit
 
 (*
   val future : ('a -> 'b) -> 'a -> 'b t

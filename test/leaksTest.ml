@@ -1,5 +1,5 @@
 
-module E = Pec.QueuedEvents.Make (Pec.QueuedEvents.Default)
+module E = Pec.Events.Make (Pec.Queues.Default)
 module S = Pec.Signal.Make (E)
 
 let (!%) = Printf.sprintf
@@ -8,7 +8,7 @@ let leak_test1 () =
   Gc.print_stat stdout;
   flush stdout;
   let e, sender_e = E.make () in
-  let r = 
+  let r =
     S.fold (fun a f -> f a) 1 e
   in
   for i = 0 to 10000000 do
@@ -25,7 +25,7 @@ let leak_test2 () =
   let e, sender_e = E.make () in
   let e2, sender_e2 = E.make () in
   let e3, sender_e3 = E.make () in
-  let se = 
+  let se =
     E.switch e2
   in
   sender_e2 e;
@@ -49,6 +49,8 @@ let leak_test2 () =
 let make_signal e sender =
   let s = S.fold (fun x () -> x + 1) 0 e in
   sender ();
+  sender ();
+  E.run_all ();
   print_int (S.read s);
   flush stdout
 
@@ -64,7 +66,7 @@ let leak_test3 () =
   flush stdout
 
 let tests =
-  [ 
+  [
     (*"leak test1", leak_test1;
     "leak test2", leak_test2;*)
     "leak test3", leak_test3;
@@ -76,4 +78,4 @@ let _ =
     print_string  (!%"running %s.." name);
     f ();
     print_string "done\n") tests;
-  
+

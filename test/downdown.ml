@@ -2,7 +2,7 @@
    Down Down!
    $Id$
 
-   to compile: 
+   to compile:
      ocamlc -thread unix.cma threads.cma graphics.cma -I +pec pec.cma downdown.ml -w -5 -o downdown
 *)
 module U = Unix
@@ -19,17 +19,17 @@ let range _from _to _step =
   in
   loop [] _from
 
-let rec forever f x = 
+let rec forever f x =
   let v = f x in forever f v
-    
+
 let spawn_loop f x =
   ignore (Thread.create (fun () -> forever f x) ())
 
 (* 同期的キューを使ったPECのインスタンス化 *)
-module E = Pec.QueuedEvents.Make (Pec.QueuedEvents.SyncQueue)
+module E = Pec.Events.Make (Pec.Queues.SyncQueue)
 module S = Pec.Signal.Make (E)
 open S.OP
-    
+
 let _map x e =
   E.map (fun _ -> x) e
 
@@ -43,14 +43,14 @@ let _repeat x n =
 let _remove_last l =
   List.rev (List.tl (List.rev l))
 
-(* ゲーム定数 *)    
+(* ゲーム定数 *)
 let ystep = 20
 let xmax = 32
 let space = 5
 let wait = 0.15
-  
+
 exception End
-  
+
 
 (* ゲームシーンを区別するモード *)
 module Mode = struct
@@ -62,8 +62,8 @@ module Mode = struct
 
   let when_playing mode e =
     E.filter (fun _ -> (S.read mode) = Playing) e
-      
-  let when_gameover mode e = 
+
+  let when_gameover mode e =
     E.filter (fun _ -> (S.read mode) = GameOver) e
 
 end
@@ -71,25 +71,25 @@ end
 (* 得点 *)
 module Score = struct
   type t = int S.t
-      
+
   let make tick restart =
     (* ティック毎に得点アップ. リスタートでゼロリセット *)
     E.choose [_map `Tick tick; _map `Restart restart]
-    +> S.fold (fun s e -> 
+    +> S.fold (fun s e ->
       match e with
         | `Tick -> s + 1
-        | `Restart -> 0) 0 
+        | `Restart -> 0) 0
 
   let draw color score =
     G.set_color color;
     G.moveto 300 350;
     G.draw_string ("SCORE " ^ (string_of_int (S.read score)))
-      
+
 end
 
 (* =で作られた壁 *)
 module Wall = struct
-  
+
   (* 中央の穴の左側のX座標をleftとする *)
   type left = int
 
@@ -101,7 +101,7 @@ module Wall = struct
   let init_left =
     xmax / 2 - 1
 
-  let wall_right left = 
+  let wall_right left =
     left + space + 1
 
   let make tick restart =
@@ -139,7 +139,7 @@ module Wall = struct
     in
     (* tick毎に壁を後進する. リスタートすれば初期状態に *)
     E.choose [_map `Tick tick; _map `Restart restart]
-    +> S.fold (fun s e -> 
+    +> S.fold (fun s e ->
       match e with
         | `Tick -> next s
         | `Restart -> init) init
@@ -162,11 +162,11 @@ module Wall = struct
       done
     in
     List.iteri (draw_wall_line color) (S.read wall)
-      
+
 end
-  
+
 module Arrow = struct
-  
+
   let arrow_y = 5
   let arrow_height = 9
   let init_pos =
@@ -183,7 +183,7 @@ module Arrow = struct
       _repeat init_pos arrow_height
     in
     let move =
-      Mode.when_playing mode key_event 
+      Mode.when_playing mode key_event
       +> E.filter_map (function
         | 'j' -> Some `Left
         | 'k' -> Some `Right
@@ -192,7 +192,7 @@ module Arrow = struct
     E.choose [move; _map `Restart restart; _map `Tick update]
     +> S.fold (fun arrow dir ->
       match dir with
-        | `Restart -> 
+        | `Restart ->
           initial
         | `Tick ->
           (* tick毎に最後尾を削り、現在の位置を追加する. *)
@@ -205,7 +205,7 @@ module Arrow = struct
             | _ ->
               arrow
     ) initial
-            
+
   let draw color t =
     let draw_v color i pos =
       if i = 0 then
@@ -222,7 +222,7 @@ module Arrow = struct
       G.draw_char 'V'
     in
     List.iteri (draw_v color) (S.read t)
-      
+
 end
 
 (* 全体の状態. 個々のtがシグナル. *)
@@ -233,7 +233,7 @@ type env = {
   score : Score.t;
 }
 
-module Drawer = struct    
+module Drawer = struct
   let draw_title () =
     let open G in
     set_color black;
@@ -243,7 +243,7 @@ module Drawer = struct
     draw_string "left: j, right: k";
     moveto 30 310;
     draw_string "restart: r , quit: q"
-      
+
   let draw env =
     G.clear_graph ();
     draw_title ();
@@ -251,7 +251,7 @@ module Drawer = struct
     Arrow.draw G.green env.arrow;
     Score.draw G.green env.score;
     G.synchronize ()
-      
+
 end
 
 (* ゲームオーバーかどうかを判定する関数 *)
@@ -271,7 +271,7 @@ let judge judge_tick restart env =
   in
   E.choose [_map `Tick judge_tick; _map `Restart restart]
   +> S.fold (fun _ -> function
-    | `Restart -> 
+    | `Restart ->
       Mode.Playing
     | `Tick ->
       if arrow_in_wall env.arrow env.wall then
@@ -279,7 +279,7 @@ let judge judge_tick restart env =
       else
         Mode.Playing) Mode.Playing
 
-let react tick_event key_event = 
+let react tick_event key_event =
   let mode =
     S.return Mode.Playing
   in
@@ -333,7 +333,7 @@ let make_tick_event () =
     tick_send `Draw     (* 描画フェーズ *)
   ) ();
   tick_event
-    
+
 let main () =
   Random.self_init ();
   G.open_graph " 640x400+50+50";
@@ -350,7 +350,7 @@ let main () =
   +> ignore;
   forever E.run_all ()
 
-let _ = 
+let _ =
   try
     main()
   with
